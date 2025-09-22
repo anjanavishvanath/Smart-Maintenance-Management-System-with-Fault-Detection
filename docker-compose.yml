@@ -1,56 +1,19 @@
-version: "3.8"
+
 services:
-  mosquitto:
-    image: eclipse-mosquitto:2.0
-    container_name: cm_mosquitto
-    ports:
-      - "1883:1883" #MQTT
-      - "9001:9001" #MQTT over WebSocket
-    volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
-    restart: unless-stopped
-  
-  timescaledb:
-    image: timescale/timescaledb:latest-pg14
-    container_name: cm_timescaledb
-    environment:
-      POSTGRES_USER: cm_user
-      POSTGRES_PASSWORD: cm_pass
-      POSTGRES_DB: cm_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - ./pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
-  
   backend:
     build: ./backend
     container_name: cm_backend
-    depends_on:
-      - mosquitto
-      - timescaledb
+    restart: unless-stopped
     environment:
       - FLASK_ENV=development
-      - DATABASE_URL=postgresql://cm_user:cm_pass@timescaledb:5432/cm_db
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
+      # - DB_STUFF
     ports:
       - "5000:5000"
     volumes:
-      - ./backend:/usr/src/app
-    restart: unless-stopped
-  
-  frontend:
-    build: ./frontend
-    container_name: cm_frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - REACT_APP_API_URL=http://backend:5000
-    volumes:
-      - ./frontend:/usr/src/app
-    depends_on:
-      - backend
-    restart: unless-stopped
+      - ./backend/app:/usr/src/app/app
+
+networks:
+  mqtt_network:
+    driver: bridge

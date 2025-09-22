@@ -1,5 +1,2 @@
 Flask==2.3.2
 paho-mqtt==1.6.1
-psycopg2-binary==2.9.6
-sqlalchemy==1.4.56
-gunicorn==20.1.0
