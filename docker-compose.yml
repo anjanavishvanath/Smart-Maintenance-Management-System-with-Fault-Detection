@@ -4,11 +4,10 @@ services:
     build: ./backend
     container_name: cm_backend
     restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
-      - FLASK_ENV=development
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      # - DB_STUFF
+      - PYTHONUNBUFFERED=1
     ports:
       - "5000:5000"
     volumes:

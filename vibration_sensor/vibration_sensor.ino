@@ -2,8 +2,8 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 
-const char* ssid = "SLT_FIBRE";
-const char* password = "Anji@123";
+const char* ssid = "Divor Automations";
+const char* password = "automations2021";
 
 // HiveMQ Cloud config
 const char* mqtt_server = "8931093ac74c4ab0ac3f0cb16e92d38b.s1.eu.hivemq.cloud";
