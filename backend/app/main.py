@@ -1,16 +1,96 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, make_response
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, get_jwt, create_access_token, get_jti
 import paho.mqtt.client as mqtt
 import os
 import threading
 import time
 import traceback
 from dotenv import load_dotenv
-
-app = Flask(__name__)
-
+import json
+#import db and auth helpers
+from db import engine, get_user_by_email, insert_user, insert_refresh_token, revoke_refresh_token, is_refresh_token_revoked
+from auth import hash_password, verify_password, build_tokens
 # Load environment variables from .env file
 load_dotenv()
 
+app = Flask(__name__)
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "your-secret-key")  # Change this in production!
+app.config["JWT_ALGORITHM"] = "HS256"
+jwt = JWTManager(app)
+
+#------------Authentication endpoints
+@app.route("/api/auth/signup", methods=["POST"])
+def signup():
+    data = request.get_json() or {}
+    email = data.get("email")
+    password = data.get("password")
+    role = data.get("role", "technician")  # default role
+    if not email or not password:
+        return jsonify({"msg": "Missing email or password"}), 400
+    # Check if user already exists
+    if get_user_by_email(email):
+        return jsonify({"msg": "User already exists"}), 409
+    # Hash password and insert user
+    try:
+        pw_hash = hash_password(password)
+    except ValueError as e:
+        return jsonify({"msg": str(e)}), 400
+    
+    insert_user(email, pw_hash, role)
+    return jsonify({"msg": "User created successfully"}), 201
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    data = request.get_json() or {}
+    email = data.get("email")
+    password = data.get("password")
+    if not email or not password:
+        return jsonify({"msg": "Missing email or password"}), 400
+    user = get_user_by_email(email)
+    if not user:
+        return jsonify({"msg": "invalid email or password"}), 401
+    user_id = user[0]
+    pw_hash = user[2]
+    role = user[3]
+    if not verify_password(password, pw_hash):
+        return jsonify({"msg": "invalid email or password"}), 401
+    identity = {"user_id": user_id, "email": email, "role": role}
+    access, refresh, jti, expires_at = build_tokens(identity)
+    # Store refresh token jti in DB for revocation check
+    insert_refresh_token(jti, user_id, expires_at)
+    # return tokens (for SPA, consider storing refresh token in HttpOnly cookie)
+    return jsonify({"access_token": access, "refresh_token": refresh, "role": role}), 200
+
+@app.route("/api/auth/refresh", methods=["POST"])
+@jwt_required(refresh=True)
+def refresh():
+    #called with refresh token in Authorization header or cookie
+    identity = get_jwt_identity()
+    claims = get_jwt()
+    jti = claims.get("jti")
+    # if jti is revoked, reject
+    if is_refresh_token_revoked(jti):
+        return jsonify({"msg": "Token has been revoked"}), 401
+    # re-issue access token using same identity and additional claims
+    additional = {}
+    if "role" in claims:
+        additional["role"] = claims.get("role")
+    if "email" in claims:
+        additional["email"] = claims.get("email")
+
+    access = create_access_token(identity=identity, additional_claims=additional)
+    return jsonify({"access_token": access}), 200
+
+@app.route("/api/auth/logout", methods=["POST"])
+@jwt_required(refresh=True)
+def logout():
+    claims = get_jwt()
+    jti = claims.get("jti")
+    # mark this jti as revoked in DB
+    revoke_refresh_token(jti)
+    return jsonify({"msg": "Refresh token revoked"}), 200
+
+# MQTT stuff
 def read_env_val(name, alt=None, required=False, default=None):
     val = os.getenv(name, alt)
     if not val and alt:
@@ -136,7 +216,7 @@ def start_mqtt_thread():
         traceback.print_exc()
         print("[MQTT] end exception", flush=True)
     
-#Flask routes
+#----------------------------------------------------Flask routes
 @app.route("/")
 def index():
     return jsonify({"message": "Welcome to the Flask API!", "mqtt_connected": mqtt_connected})
@@ -160,4 +240,7 @@ if __name__ == "__main__":
  Only for development: use threaded=True so the app and the mqtt thread can coexist.
  For production, run via gunicorn / uwsgi. When using multiple worker processes,
  run this MQTT client as a separate service (or use one worker (in docker?)).
+
+ For DB schema changes over time (development, production, iterative work) 
+ you should use a proper migration tool (Alembic) or explicit psql commands.
 '''

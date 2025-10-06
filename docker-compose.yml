@@ -13,6 +13,20 @@ services:
     volumes:
       - ./backend/app:/usr/src/app/app
 
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: cm_timescaledb
+    environment:
+      POSTGRES_USER: cm_user
+      POSTGRES_PASSWORD: cm_pass
+      POSTGRES_DB: cm_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d:ro # binds the local /sql directory to the container's init directory. :ro avoids accidental container writes.
+      - ./pgdata:/var/lib/postgresql/data # This is for persistent data storage
+    restart: unless-stopped
+
 networks:
   mqtt_network:
     driver: bridge
