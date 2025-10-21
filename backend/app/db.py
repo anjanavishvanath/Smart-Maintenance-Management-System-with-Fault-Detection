@@ -10,15 +10,30 @@ engine = create_engine(DATABASE_URL, echo=False, future=True, pool_pre_ping=True
 # --- Users ---
 def get_user_by_email(email):
     with engine.connect() as conn:
-        r = conn.execute(text("SELECT id, email, password_hash, role FROM users WHERE email = :email"), {"email": email})
-        return r.fetchone()  # returns Row or None
+        r = conn.execute(text(
+            "SELECT id, username, email, password_hash, role FROM users WHERE email = :email"
+        ), {"email": email})
+        row = r.fetchone()
+        if row is None:
+            return None
+        # convert Row to plain dict to avoid positional index confusion
+        return dict(row)
 
-def insert_user(email, password_hash, role="technician"):
+def insert_user(username, email, password_hash, role="technician"):
     with engine.begin() as conn:
         conn.execute(
-            text("INSERT INTO users (email, password_hash, role) VALUES (:email, :password_hash, :role)"),
-            {"email": email, "password_hash": password_hash, "role": role}
+            text("""
+                INSERT INTO users (username, email, password_hash, role)
+                VALUES (:username, :email, :password_hash, :role)
+            """),
+            {
+                "username": username,
+                "email": email,
+                "password_hash": password_hash,
+                "role": role
+            }
         )
+
 
 # --- Refresh tokens ---
 def insert_refresh_token(jti, user_id, expires_at):

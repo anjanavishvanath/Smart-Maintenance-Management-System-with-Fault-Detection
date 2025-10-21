@@ -7,6 +7,7 @@ import time
 import traceback
 from dotenv import load_dotenv
 import json
+from flask_cors import CORS
 #import db and auth helpers
 from db import engine, get_user_by_email, insert_user, insert_refresh_token, revoke_refresh_token, is_refresh_token_revoked
 from auth import hash_password, verify_password, build_tokens
@@ -18,15 +19,18 @@ app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "your-secret-key")  #
 app.config["JWT_ALGORITHM"] = "HS256"
 jwt = JWTManager(app)
 
+CORS(app, resources={r"/api/*": {"origins": ["http://localhost:5173"]}})
+
 #------------Authentication endpoints
 @app.route("/api/auth/signup", methods=["POST"])
 def signup():
     data = request.get_json() or {}
+    username = data.get("username")
     email = data.get("email")
     password = data.get("password")
     role = data.get("role", "technician")  # default role
-    if not email or not password:
-        return jsonify({"msg": "Missing email or password"}), 400
+    if not email or not password or not username:
+        return jsonify({"msg": "Missing email, password or username"}), 400
     # Check if user already exists
     if get_user_by_email(email):
         return jsonify({"msg": "User already exists"}), 409
@@ -36,7 +40,7 @@ def signup():
     except ValueError as e:
         return jsonify({"msg": str(e)}), 400
     
-    insert_user(email, pw_hash, role)
+    insert_user(username, email, pw_hash, role)
     return jsonify({"msg": "User created successfully"}), 201
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -49,17 +53,19 @@ def login():
     user = get_user_by_email(email)
     if not user:
         return jsonify({"msg": "invalid email or password"}), 401
-    user_id = user[0]
-    pw_hash = user[2]
-    role = user[3]
+    user_id = user.get("id")
+    username = user.get("username")
+    email = user.get("email")
+    pw_hash = user.get("password_hash")
+    role = user.get("role")
     if not verify_password(password, pw_hash):
         return jsonify({"msg": "invalid email or password"}), 401
-    identity = {"user_id": user_id, "email": email, "role": role}
+    identity = {"user_id": user_id, "email": email, "username":username , "role": role}
     access, refresh, jti, expires_at = build_tokens(identity)
     # Store refresh token jti in DB for revocation check
     insert_refresh_token(jti, user_id, expires_at)
     # return tokens (for SPA, consider storing refresh token in HttpOnly cookie)
-    return jsonify({"access_token": access, "refresh_token": refresh, "role": role}), 200
+    return jsonify({"access_token": access, "refresh_token": refresh, "role": role, "username": username}), 200
 
 @app.route("/api/auth/refresh", methods=["POST"])
 @jwt_required(refresh=True)
@@ -72,11 +78,7 @@ def refresh():
     if is_refresh_token_revoked(jti):
         return jsonify({"msg": "Token has been revoked"}), 401
     # re-issue access token using same identity and additional claims
-    additional = {}
-    if "role" in claims:
-        additional["role"] = claims.get("role")
-    if "email" in claims:
-        additional["email"] = claims.get("email")
+    additional = {k: claims.get(k) for k in ("email", "role", "username") if claims.get(k) is not None}
 
     access = create_access_token(identity=identity, additional_claims=additional)
     return jsonify({"access_token": access}), 200

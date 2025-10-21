@@ -29,14 +29,15 @@ def verify_password(plaintext, hashed):
 
 def build_tokens(identity_claims: dict):
     '''
-    identity_claims must contain: {"user_id": int, "email": str, "role": str}
+    identity_claims must contain: {"user_id": int, "email": str, "username": str, "role": str}
     Returns: (access, refresh, jti, expires_at)
     '''
     # Make identity a string (user id)
     identity_str = str(identity_claims.get("user_id"))
     additional = {
         "email": identity_claims.get("email"),
-        "role": identity_claims.get("role")
+        "role": identity_claims.get("role"),
+        "username": identity_claims.get("username")
     }
     access = create_access_token(identity=identity_str, additional_claims=additional,
                                  expires_delta=timedelta(seconds=JWT_ACCESS_EXPIRES))
