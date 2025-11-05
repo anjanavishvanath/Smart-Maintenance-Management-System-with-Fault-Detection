@@ -39,7 +39,18 @@ CREATE TABLE IF NOT EXISTS devices (
   status TEXT DEFAULT 'offline',
   last_seen TIMESTAMPTZ,
   config JSONB DEFAULT '{}'::jsonb,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS device_credentials (
+  id SERIAL PRIMARY KEY,
+  device_id TEXT NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
+  username TEXT NOT NULL,
+  password_enc TEXT NOT NULL,   -- encrypted (Fernet) or otherwise encrypted blob
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ
 );
 
 -- alerts / tickets

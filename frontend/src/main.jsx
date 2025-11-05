@@ -7,6 +7,7 @@ import AppLayout from "./AppLayout";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import AddDevice from "./pages/AddDevice.jsx";
 
 import './styles.css';
 
@@ -20,6 +21,7 @@ createRoot(document.getElementById('root')).render(
                     <Route path='/login' element={<Login />}/>
                     <Route element={<ProtectedRoute />}>
                         <Route path='dashboard' element={<Dashboard />} />
+                        <Route path='add-device' element={<AddDevice/>} />
                     </Route>
                 </Route>
             </Routes>

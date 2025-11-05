@@ -7,12 +7,19 @@ import time
 import traceback
 from dotenv import load_dotenv
 import json
+from queue import Queue
+import secrets
+from datetime import datetime, timedelta, timezone
 from flask_cors import CORS
+from sqlalchemy import text
 #import db and auth helpers
 from db import engine, get_user_by_email, insert_user, insert_refresh_token, revoke_refresh_token, is_refresh_token_revoked
+from db import get_device_by_device_id, insert_device, insert_device_credentials, get_active_credentials_for_device
+from db import insert_reading, get_recent_readings, get_all_devices
 from auth import hash_password, verify_password, build_tokens
 # Load environment variables from .env file
 load_dotenv()
+
 
 app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "your-secret-key")  # Change this in production!
@@ -20,6 +27,38 @@ app.config["JWT_ALGORITHM"] = "HS256"
 jwt = JWTManager(app)
 
 CORS(app, resources={r"/api/*": {"origins": ["http://localhost:5173"]}})
+
+# Creating a in memmory queue and worker to perform DB writes off the MQTT thread
+write_queue = Queue(maxsize=1000)
+
+def db_writer_worker():
+    # Background worker that consumes items from write_queue and inserts in to DB
+    while True:
+        item = write_queue.get() # block unitll available
+        if item is None:
+            #  sentinel to stop worker if needed
+            break
+        try:
+            # item expected format: dict with keys ts_ms or time, device_id, ax, ay, az, sample_rate, meta
+            time_ms = item.get("ts_ms") or item.get("time")
+            device_id = item.get("device_id")
+            ax = float(item.get("ax")) if item.get("ax") is not None else None
+            ay = float(item.get("ay")) if item.get("ay") is not None else None
+            az = float(item.get("az")) if item.get("az") is not None else None
+            sample_rate = item.get("sample_rate") if item.get("sample_rate") is not None else None
+            meta = item.get("meta") or item # store whole payload if meta is missing
+            # have a way to accept aggregate inserts later for performance
+
+            # Call DB insert function
+            insert_reading(time_ms, device_id, ax, ay, az, sample_rate, meta)
+        except Exception:
+            # continue without crashing
+            print("[DB WORKER] Exception writing the reading to DB:", flush=True)
+            import traceback; traceback.print_exc()
+        finally:
+            write_queue.task_done()
+
+
 
 #------------Authentication endpoints
 @app.route("/api/auth/signup", methods=["POST"])
@@ -92,7 +131,79 @@ def logout():
     revoke_refresh_token(jti)
     return jsonify({"msg": "Refresh token revoked"}), 200
 
-# MQTT stuff
+# --- Device provisioning endpoints ---
+# Utility to generate username/password for device
+def generate_mqtt_creds(device_id):
+    # username: device_id + random suffix
+    username = f"{device_id}-{secrets.token_urlsafe(6)}"
+    # password: random urlsafe
+    password = secrets.token_urlsafe(24)
+    return username, password
+
+@app.route("/api/devices/provision", methods=["POST"])
+@jwt_required()   # ensure caller is an authenticated user
+def provision_device():
+    """
+    Expected body: { "device_id": "dev0001", "claim_token": "...", "mac": "AA:BB:CC:..", "fw_version": "v0.1.0" }
+    Any authenticated user may create a device; device will be associated with that user (created_by).
+    """
+    data = request.get_json(silent=True) or {}
+    device_id = data.get("device_id")
+    claim = data.get("claim_token") or data.get("claim")
+    mac = data.get("mac")
+    fw = data.get("fw_version")
+
+    if not device_id:
+        return jsonify({"msg": "device_id required"}), 400
+
+    # determine calling user id (JWT identity was stored as string in build_tokens)
+    try:
+        identity = get_jwt_identity()
+        created_by = int(identity) if identity is not None else None
+    except Exception:
+        created_by = None
+
+    # If device already exists, we can return its active creds (or create fresh ones)
+    device = get_device_by_device_id(device_id)
+    if not device:
+        # insert minimal device row and record created_by
+        insert_device(device_id, name=device_id, config={"fw_version": fw, "mac": mac}, created_by=created_by)
+    else:
+        # optional: update last known fw/mac into config
+        try:
+            cfg = device.get("config") or {}
+            if isinstance(cfg, str):
+                cfg = json.loads(cfg)
+            cfg.update({"fw_version": fw, "mac": mac})
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE devices SET config = :cfg WHERE device_id = :device_id"),
+                             {"cfg": json.dumps(cfg), "device_id": device_id})
+        except Exception:
+            pass
+
+    # Generate one-time creds
+    username, password = generate_mqtt_creds(device_id)
+
+    # Optionally set expiry (e.g., 7 days) — or do not expire
+    expires_at = datetime.utcnow() + timedelta(days=30)
+    insert_device_credentials(device_id, username, password, expires_at=expires_at)
+
+    # Prepare config returned to device.
+    config = {
+        "mqtt_host": MQTT_HOST,
+        "mqtt_port": MQTT_PORT,
+        "client_id": device_id,
+        "topic_prefix": f"v1/device/{device_id}",
+        "fw_version": "v0.1.0",
+    }
+
+    resp = {
+        "credentials": {"username": username, "password": password},
+        "config": config
+    }
+    return jsonify(resp), 200
+
+# --- MQTT stuff ---
 def read_env_val(name, alt=None, required=False, default=None):
     val = os.getenv(name, alt)
     if not val and alt:
@@ -108,7 +219,7 @@ MQTT_HOST = read_env_val("MQTT_HOST", alt="MQTT_BROKER" ,required=True)
 MQTT_PORT = int(read_env_val("MQTT_PORT", alt="MQTT_PORT", default="8883"))
 MQTT_USERNAME = read_env_val("MQTT_USER", alt="MQTT_USERNAME", default=None)
 MQTT_PASSWORD = read_env_val("MQTT_PASSWORD", alt="MQTT_PASS", default=None)
-MQTT_TOPIC_SUB = read_env_val("MQTT_TOPIC_SUB", alt="MQTT_TOPIC", default="test/topic")
+MQTT_TOPIC_SUB = read_env_val("MQTT_TOPIC_SUB", alt="MQTT_TOPIC", default="v1/device/+/telemetry")
 CLIENT_ID = read_env_val("CLIENT_ID", default="cm-backend")
 
 print("[CONFIG] MQTT_HOST=", MQTT_HOST, "MQTT_PORT=", MQTT_PORT, "MQTT_TOPIC_SUB=", MQTT_TOPIC_SUB)
@@ -150,9 +261,28 @@ def on_message(client, userdata, msg):
     except Exception:
         payload = str(msg.payload)
     print(f"[MQTT CB] on_message {msg.topic} -> {payload}")
-    # update shared variable
-    global latest_message
-    latest_message = {"topic": msg.topic, "payload": payload, "qos": msg.qos, "timestamp": time.time()}
+    
+    # Quick topic parsing: expecting v1/device/{device_id}/telemetry
+    topic_parts = msg.topic.split("/")
+    device_id = None
+    if(len(topic_parts) >= 3 and topic_parts[0] == "v1" and topic_parts[1] == "device"):
+        device_id = topic_parts[2]
+    # parsing the payload as JSON
+    try:
+        data = json.loads(payload)
+    except Exception:
+        data = None
+
+    item = {}
+    if isinstance(data, dict):
+        item = dict(data)  # make a copy
+    
+    #Enqueue for DB write (non-blocking, drop and log if full)
+    try:
+        write_queue.put_nowait(item)
+    except Exception:
+         print("[MQTT CB] write_queue full - dropping telemetry", flush=True)
+
 
 def on_log(client, userdata, level, buf):
     # Paho log levels: 0-4. Print everything for debugging:
@@ -223,17 +353,79 @@ def start_mqtt_thread():
 def index():
     return jsonify({"message": "Welcome to the Flask API!", "mqtt_connected": mqtt_connected})
 
-@app.route("/latest")
-def get_latest_message():
-    if latest_message:
-        return jsonify({"mqtt_connected": mqtt_connected, "data": latest_message})
-    else:
-        return jsonify({"message": "No data received yet", "mqtt_connected": mqtt_connected}), 404
+@app.route("/api/devices", methods=["GET"])
+@jwt_required()
+def api_list_devices():
+    try:
+        limit = int(request.args.get("limit", "100"))
+    except Exception:
+        limit = 100
+    
+    # get current user id from JWT
+    try:
+        identity = get_jwt_identity()
+        user_id = int(identity) if identity is not None else None
+    except Exception:
+        user_id = None
+
+    try:
+        rows = get_all_devices(limit=limit, user_id=user_id)
+        return jsonify({"count": len(rows), "devices": rows}), 200
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"msg": "Error retrieving devices", "error": str(e)}), 500
+
+
+@app.route("/api/devices/<device_id>", methods=["GET"])
+@jwt_required()
+def api_get_device(device_id):
+    # fetch device
+    device = get_device_by_device_id(device_id)
+    if not device:
+        return jsonify({"msg": "Device not found"}), 404
+    #enforce ownership
+    try:
+        caller_id = int(get_jwt_identity())
+        if device.get("created_by") and device.get("created_by") != caller_id:
+            return jsonify({"msg": "Not authorized to access this device"}), 403
+    except Exception:
+        pass
+    # prepare response. Check if this is needed or we can return as is 
+    cfg = device.get("config")
+    try:
+        cfg_parsed = json.loads(cfg) if cfg and isinstance(cfg, str) else cfg
+    except Exception:
+        cfg_parsed = cfg
+    resp = {
+        "device_id": device.get("device_id"),
+        "name": device.get("name"),
+        "status": device.get("status"),
+        "last_seen": device.get("last_seen") if device.get("last_seen") else None,
+        "config": cfg_parsed
+    }
+    return jsonify(resp), 200
+
+
+@app.route("/api/devices/<device_id>/readings", methods=["GET"])
+def api_get_device_readings(device_id):
+    try:
+        limit = int(request.args.get("limit", "100"))
+    except Exception:
+        limit = 100
+    
+    try:
+        rows = get_recent_readings(device_id, limit=limit)
+        return jsonify({"device_id": device_id, "count": len(rows), "readings": rows}), 200
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"msg": "Error retrieving readings", "error": str(e)}), 500
 
 if __name__ == "__main__":
     # Start MQTT thread (guarded by __main__ so it does not run on import)
     mqtt_thread = threading.Thread(target=start_mqtt_thread, daemon=True)
+    db_worker_thread = threading.Thread(target=db_writer_worker, daemon=True)
     mqtt_thread.start()
+    db_worker_thread.start()
     # Start Flask (dev). In production, use WSGI server and run mqtt client separately.
     app.run(host="0.0.0.0", port=5000)
 
