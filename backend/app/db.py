@@ -1,15 +1,35 @@
 # sqlAlchemy helpers for DB access
 import os
+import time
 import base64
 import json
+from typing import Optional
 from cryptography.fernet import Fernet
 from datetime import datetime, timedelta, timezone
+import psycopg2
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://cm_user:cm_pass@timescaledb:5432/cm_db')
 
 engine = create_engine(DATABASE_URL, echo=False, future=True, pool_pre_ping=True)
+
+def wait_for_db():
+    max_retries = 10
+    wait_seconds = 2
+    print(f"[DB] Attempting to connect to {DATABASE_URL}", flush=True)
+    for i in range(max_retries):
+        try:
+            # testing with a simple connection
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            print("[DB] Connection successful", flush=True)
+            return
+        except OperationalError as e:
+            print(f"[DB] Connection failed (Attempt {i+1}/{max_retries}). Retrying in {wait_seconds}s...", flush=True)
+            time.sleep(wait_seconds)
+    print("[DB] Could not connect to database after multiple attempts. Exiting.", flush=True)
+    exit(1)
 
 # --- Users ---
 def get_user_by_email(email):
@@ -178,50 +198,100 @@ def revoke_credentials(username):
                      {"username": username})
         
 #  --- vibration readings ---
-def insert_reading(time_ts, device_id, ax, ay, az, sample_rate=None, meta=None):
-    '''
-        Insert single reaiding row into readings hypertable
-        time_ts: datetime (tz-aware UTC) or UNIX ms int
-        meta: dict or JSON serializable object
-    '''
+def insert_metrics_bulk(readings_list: list):
+    """
+    Bulk-insert metrics. Uses ON CONFLICT DO UPDATE to avoid duplicate (time, device_id) primary key errors.
+    readings_list: list of dicts with keys time (datetime), device_id, sample_rate, samples, metrics (json string or dict)
+    """
+    if not readings_list:
+        return
 
-    #  normalize time to timestamptz
-    if isinstance(time_ts, (int, float)):
-        # assume milliseconds
-        ts = datetime.fromtimestamp(float(time_ts) / 1000.0, tz=timezone.utc)
-    elif isinstance(time_ts, datetime):
-        ts = time_ts
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+    stmt = text("""
+        INSERT INTO readings_parameters (time, device_id, sample_rate, samples, metrics)
+        VALUES (:time, :device_id, :sample_rate, :samples, :metrics)
+        ON CONFLICT (time, device_id)
+        DO UPDATE SET
+            sample_rate = COALESCE(EXCLUDED.sample_rate, readings_parameters.sample_rate),
+            samples = COALESCE(EXCLUDED.samples, readings_parameters.samples),
+            metrics = COALESCE(EXCLUDED.metrics, readings_parameters.metrics)
+    """)
+    with engine.begin() as conn:
+        conn.execute(stmt, readings_list)
+
+def get_recent_metrics(device_id, limit=100):
+    """Return up to `limit` recent readings metrics for device_id as list of dicts (newest first)."""
+    with engine.connect() as conn:
+        r = conn.execute(text("""
+            SELECT time, device_id, sample_rate, samples, metrics
+            FROM readings_parameters
+            WHERE device_id = :device_id
+            ORDER BY time DESC
+            LIMIT :limit
+        """), {"device_id": device_id, "limit": limit})
+        rows = r.fetchall() # Convert Result object to list of Row objects
+    results = []
+    for row in rows:
+        # handle JSON deserialization safely
+        raw_metrics = row.metrics # accessing by attribute is cleaner in newer SQLAlchemy
+        # Check if it's already a dict (sqlalchemy does this sometimes) or needs parsing
+        if isinstance(raw_metrics, str):
+             try:
+                metrics_parsed = json.loads(raw_metrics)
+             except ValueError:
+                metrics_parsed = {}
+        else:
+             metrics_parsed = raw_metrics
+        results.append({
+            "time": row.time.isoformat() if row.time else None,
+            "device_id": row.device_id,
+            "sample_rate": row.sample_rate,
+            "samples": row.samples,
+            "metrics": metrics_parsed
+        })
+    return results
+
+# --- Raw blocks helpers ---
+def insert_raw_block(block_id: str, device_id: str, time_ts_ms, sample_rate: int, samples: int,
+                     encoding: str, payload_bytes: bytes, crc32: int | None = None):
+    """
+    Insert a raw block into raw_blocks table.
+    payload_bytes: Python bytes (binary)
+    time_ts_ms: milliseconds since epoch (int) or datetime
+    """
+    # normalize time
+    if isinstance(time_ts_ms, (int, float)):
+        ts = datetime.fromtimestamp(float(time_ts_ms) / 1000.0, tz=timezone.utc)
+    elif isinstance(time_ts_ms, datetime):
+        ts = time_ts_ms if time_ts_ms.tzinfo else time_ts_ms.replace(tzinfo=timezone.utc)
     else:
-        # fallback to currrent time UTC
         ts = datetime.now(tz=timezone.utc)
-
-    meta_json = json.dumps(meta) if meta is not None else None
-
+    # Use raw connection to pass psycopg2.Binary for bytea <- turns out this is not nessesary
+    # SQLAlchemy knows payload_bytes is type bytes and will map to bytea automatically
     with engine.begin() as conn:
         conn.execute(
             text("""
-                INSERT INTO readings (time, device_id, ax, ay, az, sample_rate, meta)
-                VALUES (:time, :device_id, :ax, :ay, :az, :sample_rate, :meta)
-            """),
-            {
-                "time": ts,
-                "device_id": device_id,
-                "ax": ax,
-                "ay": ay,
-                "az": az,
-                "sample_rate": sample_rate,
-                "meta": meta_json
-            },
-        )
+                INSERT INTO raw_blocks (time, device_id, block_id, sample_rate, samples, encoding, crc32, payload)
+                VALUES (:time, :device_id, :block_id, :sample_rate, :samples, :encoding, :crc32, :payload)
+                 """),
+                 {
+                    "time": ts,
+                    "device_id": device_id,
+                    "block_id": block_id,
+                    "sample_rate": sample_rate,
+                    "samples": samples,
+                    "encoding": encoding,
+                    "crc32": crc32,
+                    "payload": payload_bytes
+                 }
+        ) 
+    
 
-def get_recent_readings(device_id, limit=100):
-    """Return up to `limit` recent readings for device_id as list of dicts (newest first)."""
+# return metadata about recent raw blocks. Fetch payload itself separately if needed.
+def get_recent_raw_blocks(device_id: str, limit: int = 20):
     with engine.connect() as conn:
         r = conn.execute(text("""
-            SELECT time, device_id, ax, ay, az, sample_rate, meta
-            FROM readings
+            SELECT time, device_id, block_id, sample_rate, samples, encoding, crc32, octet_length(payload) as payload_len
+            FROM raw_blocks
             WHERE device_id = :device_id
             ORDER BY time DESC
             LIMIT :limit
@@ -229,19 +299,14 @@ def get_recent_readings(device_id, limit=100):
         rows = r.fetchall()
     results = []
     for row in rows:
-        # row might be a Row object; convert to dict-like
-        meta = row["meta"]
-        try:
-            meta_parsed = json.loads(meta) if meta else None
-        except Exception:
-            meta_parsed = meta
         results.append({
-            "time": row["time"].isoformat() if row["time"] is not None else None,
+            "block_id": row["block_id"],
             "device_id": row["device_id"],
-            "ax": row["ax"],
-            "ay": row["ay"],
-            "az": row["az"],
+            "time": row["time"].isoformat() if row["time"] else None,
             "sample_rate": row["sample_rate"],
-            "meta": meta_parsed
+            "samples": row["samples"],
+            "encoding": row["encoding"],
+            "crc32": row["crc32"],
+            "payload_len": int(row["payload_len"]) if row["payload_len"] is not None else 0
         })
     return results
