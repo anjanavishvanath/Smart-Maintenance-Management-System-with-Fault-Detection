@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from "../auth/AuthProvider";
 import { deviceService } from "../services/deviceService";
 import DeviceReadingsChart from "../components/DeviceReadingsChart";
+import { set } from "date-fns";
 
 export default function Dashboard() {
     const { user } = useAuth();
@@ -27,7 +28,11 @@ export default function Dashboard() {
     };
 
     const selectDevice = async (d) => {
-        setSelected(d);
+        if (d === selected) {
+            setSelected(null);
+        } else{
+            setSelected(d);
+        }
         setLoadingReadings(true);
         try {
             const r = await deviceService.getReadings(d.device_id, 50);
@@ -49,10 +54,10 @@ export default function Dashboard() {
 
 
     return (
-        <div>
+        <div className="dashboard-section">
             <div className="dash-welcome">
                 <h2>Welcome {user.username}</h2>
-                {/* subscribed company */}
+                {/* subscribed company later*/}
             </div>
             <div className="dash-add-device">
                 <Link to="/add-device">Add Device</Link>
@@ -61,25 +66,23 @@ export default function Dashboard() {
             <section>
                 <h3>Devices</h3>
                 {loadingDevices ? <div>Loading devices...</div> : null}
-                <table className="devices-table">
-                    <thead><tr><th>Device ID</th><th>Name</th><th>Status</th><th>Last seen</th><th>Actions</th></tr></thead>
-                    <tbody>
-                        {devices.map(d => (
-                            <tr key={d.device_id}>
-                                <td>{d.device_id}</td>
-                                <td>{d.name}</td>
-                                <td>{d.status}</td>
-                                <td>{d.last_seen || "-"}</td>
-                                <td>
-                                    <button onClick={() => selectDevice(d)}>View readings</button>
-                                </td>
-                            </tr>
-                        ))}
-                        {devices.length === 0 && <tr><td colSpan="5">No devices</td></tr>}
-                    </tbody>
-                </table>
+                <div className="table-wrap">
+                    <table className="devices-table">
+                        <thead><tr><th>Device ID</th><th>Name</th><th>Status</th><th>Last seen</th></tr></thead>
+                        <tbody>
+                            {devices.map(d => (
+                                <tr key={d.device_id} onClick={() => selectDevice(d)} className={selected && selected.device_id === d.device_id ? 'selected' : ''}>
+                                    <td>{d.device_id}</td>
+                                    <td>{d.name}</td>
+                                    <td>{d.status}</td>
+                                    <td>{d.last_seen || "-"}</td>
+                                </tr>
+                            ))}
+                            {devices.length === 0 && <tr><td colSpan="4">No devices</td></tr>}
+                        </tbody>
+                    </table>
+                </div>
             </section>
-
             {selected && (
                 <section className="device-detail">
                     <h3>Readings for {selected.device_id}</h3>
@@ -91,24 +94,6 @@ export default function Dashboard() {
                         {/* Chart component; limit 300 points and refresh every 5s */}
                         <DeviceReadingsChart deviceId={selected.device_id} limit={300} refreshMs={5000} />
                     </div>
-
-                    {/* keep raw table below if you want */}
-                    <details>
-                        <summary>Raw readings table</summary>
-                        <table>
-                            <thead><tr><th>Time (UTC)</th><th>ax</th><th>ay</th><th>az</th></tr></thead>
-                            <tbody>
-                                {readings.map((r, i) => (
-                                    <tr key={i}>
-                                        <td>{r.time}</td>
-                                        <td>{r.ax}</td>
-                                        <td>{r.ay}</td>
-                                        <td>{r.az}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </details>
                 </section>
             )}
         </div>

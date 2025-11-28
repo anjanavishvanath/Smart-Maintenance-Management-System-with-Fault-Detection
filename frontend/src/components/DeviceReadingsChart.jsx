@@ -42,6 +42,7 @@ ChartJS.register(
 export default function DeviceReadingsChart({ deviceId, limit = 200, refreshMs = 5000 }) {
   const [readings, setReadings] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [metricType, setMetricType] = useState("rms"); // rms, peak, mean
   const intervalRef = useRef(null);
 
   // fetch once and schedule refresh
@@ -55,16 +56,20 @@ export default function DeviceReadingsChart({ deviceId, limit = 200, refreshMs =
         // deviceService returns { device_id, count, readings }
         const rows = res.readings || [];
         if (!mounted) return;
-        // Filter rows that have valid time + numeric ax/ay/az
+
+        // Parse rows. The backend returns `metrics` as a JSON object (or stringified JSON).
+        // We expect keys like: ax_rms_g, ay_rms_g, az_rms_g, ax_peak_g, ...
         const cleaned = rows
-          .map(r => ({
-            time: r.time, // expecting ISO8601 string (server sends isoformat)
-            ax: r.ax !== undefined ? Number(r.ax) : null,
-            ay: r.ay !== undefined ? Number(r.ay) : null,
-            az: r.az !== undefined ? Number(r.az) : null,
-            meta: r.meta || null
-          }))
-          // drop points with no timestamp
+          .map(r => {
+            let m = r.metrics || {};
+            if (typeof m === 'string') {
+              try { m = JSON.parse(m); } catch (e) { }
+            }
+            return {
+              time: r.time,
+              metrics: m
+            };
+          })
           .filter(r => r.time);
 
         setReadings(cleaned.reverse()); // reverse so earliest->latest order for chart
@@ -86,16 +91,25 @@ export default function DeviceReadingsChart({ deviceId, limit = 200, refreshMs =
     };
   }, [deviceId, limit, refreshMs]);
 
+  // Helper to extract value based on metric type
+  const getValue = (metrics, axis, type) => {
+    if (!metrics) return null;
+    // key pattern: ax_rms_g, ay_peak_g, etc.
+    const key = `${axis}_${type}_g`;
+    const val = metrics[key];
+    return (val !== undefined && val !== null) ? Number(val) : null;
+  };
+
   // prepare chart data
-  // When building datasets, skip null datapoints (Chart.js accepts null to create gaps).
-  const times = readings.map(r => new Date(r.time).getTime()); // epoch ms
-  const dataset = (key, label, color) => ({
-    label,
+  const times = readings.map(r => new Date(r.time).getTime());
+
+  const dataset = (axis, color) => ({
+    label: `${axis} (${metricType})`,
     data: readings.map((r, i) => {
-      const val = r[key];
+      const val = getValue(r.metrics, axis, metricType);
       return {
         x: times[i],
-        y: val === null || Number.isNaN(val) ? null : val
+        y: val
       };
     }),
     tension: 0.15,
@@ -108,9 +122,9 @@ export default function DeviceReadingsChart({ deviceId, limit = 200, refreshMs =
 
   const chartData = {
     datasets: [
-      dataset("ax", "ax (g)", "rgb(255, 99, 132)"),
-      dataset("ay", "ay (g)", "rgb(54, 162, 235)"),
-      dataset("az", "az (g)", "rgb(75, 192, 192)")
+      dataset("ax", "rgb(255, 99, 132)"),
+      dataset("ay", "rgb(54, 162, 235)"),
+      dataset("az", "rgb(75, 192, 192)")
     ]
   };
 
@@ -128,7 +142,7 @@ export default function DeviceReadingsChart({ deviceId, limit = 200, refreshMs =
       },
       title: {
         display: true,
-        text: `Device ${deviceId} — accelerometer (ax/ay/az)`,
+        text: `Device ${deviceId} — Vibration (${metricType.toUpperCase()})`,
       }
     },
     scales: {
@@ -153,15 +167,28 @@ export default function DeviceReadingsChart({ deviceId, limit = 200, refreshMs =
           display: true,
           text: "Acceleration (g)"
         },
-        suggestedMin: -2,
-        suggestedMax: 2,
+        // Remove hardcoded min/max to allow auto-scaling for different metrics
+        // suggestedMin: -2, 
+        // suggestedMax: 2,
       }
     }
   };
 
   return (
     <div style={{ width: "100%", height: "360px", position: "relative" }}>
-      {loading && <div style={{position:"absolute",left:10,top:10,zIndex:10,background:"rgba(255,255,255,0.8)",padding:"6px 8px",borderRadius:4}}>Loading...</div>}
+      <div style={{ position: "absolute", right: 10, top: 0, zIndex: 5 }}>
+        <select
+          value={metricType}
+          onChange={e => setMetricType(e.target.value)}
+          style={{ padding: "4px 8px", borderRadius: "4px", border: "1px solid #ccc" }}
+        >
+          <option value="rms">RMS</option>
+          <option value="peak">Peak</option>
+          <option value="mean">Mean</option>
+        </select>
+      </div>
+
+      {loading && <div style={{ position: "absolute", left: 10, top: 10, zIndex: 10, background: "rgba(255,255,255,0.8)", padding: "6px 8px", borderRadius: 4 }}>Loading...</div>}
       {readings.length === 0 && !loading ? (
         <div style={{ padding: 20 }}>No readings available yet for this device.</div>
       ) : (

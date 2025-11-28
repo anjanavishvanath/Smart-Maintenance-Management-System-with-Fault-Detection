@@ -36,7 +36,6 @@ import time
 from datetime import datetime, timezone
 import json
 
-from queue import Empty
 import psycopg2
 
 def db_writer_worker():
