@@ -97,3 +97,23 @@ SELECT create_hypertable('raw_blocks', 'time', if_not_exists => TRUE);
 -- indexes for quick device/time queries
 CREATE INDEX IF NOT EXISTS idx_raw_blocks_device_time ON raw_blocks(device_id, time DESC);
 CREATE INDEX IF NOT EXISTS idx_readings_device_time ON readings_parameters(device_id, time DESC);
+
+-- spectrum dat: Store fft summaries of raw blocks
+CREATE TABLE IF NOT EXISTS spectrum_data (
+  time TIMESTAMPTZ NOT NULL,
+  device_id TEXT NOT NULL,
+  block_id TEXT,               -- optional linkage to raw_blocks.block_id
+  axis TEXT NOT NULL,          -- 'ax' / 'ay' / 'az' / 'magnitude'
+  sample_rate INTEGER,
+  samples INTEGER,             -- number of samples in the FFT input
+  freqs DOUBLE PRECISION[],    -- frequency bin centers (Hz)
+  amps DOUBLE PRECISION[],     -- magnitude per bin (RMS or amplitude)
+  dominant_freq DOUBLE PRECISION,
+  dominant_amp DOUBLE PRECISION,
+  band_energies JSONB,         -- e.g. {"0-50": 0.23, "50-200": 0.12}
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (time, device_id, axis)
+);
+
+SELECT create_hypertable('spectrum_data', 'time', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS idx_spectrum_device_time ON spectrum_data(device_id, time DESC);

@@ -6,5 +6,7 @@ export const deviceService = {
   provisionDevice: ({ device_id, claim_token, mac, fw_version }) =>
     api.post("/devices/provision", { device_id, claim_token, mac, fw_version }).then(r => r.data),
   getReadings: (deviceId, limit = 50) =>
-    api.get(`/devices/${deviceId}/readings?limit=${limit}`).then(r => r.data)
+    api.get(`/devices/${deviceId}/readings?limit=${limit}`).then(r => r.data),
+  getSpectrum: (deviceId, { axis = "magnitude", limit = 20 } = {}) =>
+    api.get(`/devices/${deviceId}/spectrum?axis=${axis}&limit=${limit}`).then(r => r.data)
 };

@@ -15,8 +15,8 @@ const char* DEVICE_ID = "dev000";
 
 const char* MQTT_HOST = "8931093ac74c4ab0ac3f0cb16e92d38b.s1.eu.hivemq.cloud";
 const int MQTT_PORT = 8883;
-const char* MQTT_USERNAME = "dev000-VtSxrXh6";
-const char* MQTT_PASSWORD = "mJrUSIgHFt-CdGA3VVvNylhE-syD6EA2";
+const char* MQTT_USERNAME = "dev000-fF6rA2rz";
+const char* MQTT_PASSWORD = "vc1pPneCsb_RBx_8fXqY3SAznq9Tz6Kk";
 
 // Sampling config
 const uint32_t SAMPLE_RATE_HZ = 1000;       // 1000 Hz

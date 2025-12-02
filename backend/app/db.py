@@ -310,3 +310,94 @@ def get_recent_raw_blocks(device_id: str, limit: int = 20):
             "payload_len": int(row["payload_len"]) if row["payload_len"] is not None else 0
         })
     return results
+
+# --- Spectrum helpers ---
+def insert_spectrum_row(time_ts_ms, device_id, block_id, axis, sample_rate, samples, freqs, amps, dominant_freq=None, dominant_amp=None, band_energies=None):
+    """
+    freqs: list/tuple of floats
+    amps: list/tuple of floats (same length as freqs)
+    band_energies: dict or None
+    """
+    # normalize time
+    if isinstance(time_ts_ms, (int, float)):
+        ts = datetime.fromtimestamp(float(time_ts_ms) / 1000.0, tz=timezone.utc)
+    elif isinstance(time_ts_ms, datetime):
+        ts = time_ts_ms if time_ts_ms.tzinfo else time_ts_ms.replace(tzinfo=timezone.utc)
+    else:
+        ts = datetime.now(tz=timezone.utc)
+
+    # ensure lists are real python lists
+    freqs_list = list(freqs) if freqs is not None else None
+    amps_list = list(amps) if amps is not None else None
+    band_json = json.dumps(band_energies) if band_energies is not None else None
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO spectrum_data (time, device_id, block_id, axis, sample_rate, samples, freqs, amps, dominant_freq, dominant_amp, band_energies)
+            VALUES (:time, :device_id, :block_id, :axis, :sample_rate, :samples, :freqs, :amps, :dominant_freq, :dominant_amp, :band_energies)
+        """), {
+            "time": ts,
+            "device_id": device_id,
+            "block_id": block_id,
+            "axis": axis,
+            "sample_rate": sample_rate,
+            "samples": samples,
+            "freqs": freqs_list,
+            "amps": amps_list,
+            "dominant_freq": dominant_freq,
+            "dominant_amp": dominant_amp,
+            "band_energies": band_json
+        })
+
+def get_spectrum(device_id, axis=None, limit=50, since_ts=None):
+    """
+    Return most recent `limit` spectrum rows for device (optionally filtered by axis).
+    since_ts: ISO string or ms epoch (optional)
+    """
+    q = """
+        SELECT time, device_id, block_id, axis, sample_rate, samples, freqs, amps, dominant_freq, dominant_amp, band_energies
+        FROM spectrum_data
+        WHERE device_id = :device_id
+    """
+    if axis:
+        q += " AND axis = :axis"
+    if since_ts:
+        # accept milliseconds or ISO string
+        try:
+            if isinstance(since_ts, (int, float)):
+                ts = datetime.fromtimestamp(float(since_ts)/1000.0, tz=timezone.utc)
+                q += " AND time >= :since"
+                params = {"device_id": device_id, "axis": axis, "since": ts, "limit": limit}
+            else:
+                q += " AND time >= :since"
+                params = {"device_id": device_id, "axis": axis, "since": since_ts, "limit": limit}
+        except Exception:
+            params = {"device_id": device_id, "axis": axis, "limit": limit}
+    else:
+        params = {"device_id": device_id, "axis": axis, "limit": limit}
+
+    q += " ORDER BY time DESC LIMIT :limit"
+    with engine.connect() as conn:
+        r = conn.execute(text(q), params)
+        rows = r.fetchall()
+    out = []
+    for row in rows:
+        be = row["band_energies"]
+        try:
+            be_parsed = json.loads(be) if be and isinstance(be, str) else be
+        except Exception:
+            be_parsed = None
+        out.append({
+            "time": row["time"].isoformat() if row["time"] else None,
+            "device_id": row["device_id"],
+            "block_id": row["block_id"],
+            "axis": row["axis"],
+            "sample_rate": row["sample_rate"],
+            "samples": row["samples"],
+            "freqs": row["freqs"],   # SQLAlchemy returns arrays as lists
+            "amps": row["amps"],
+            "dominant_freq": row["dominant_freq"],
+            "dominant_amp": row["dominant_amp"],
+            "band_energies": be_parsed
+        })
+    return out

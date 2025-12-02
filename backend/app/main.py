@@ -16,8 +16,9 @@ from sqlalchemy import text
 from db import engine, get_user_by_email, insert_user, insert_refresh_token, revoke_refresh_token, is_refresh_token_revoked
 from db import get_device_by_device_id, insert_device, insert_device_credentials, get_active_credentials_for_device
 from db import insert_metrics_bulk, get_recent_metrics, get_all_devices
-from db import wait_for_db, insert_raw_block
+from db import wait_for_db, insert_raw_block, insert_spectrum_row, get_spectrum
 from auth import hash_password, verify_password, build_tokens
+from fft_processor import process_raw_payload
 # Load environment variables from .env file
 load_dotenv()
 
@@ -108,26 +109,31 @@ def db_writer_worker():
                         })
 
                 elif typ == "RAW_BLOCK":
-                    d = data
-                    # validate minimal fields
-                    if not d.get("device_id") or not d.get("block_id") or not d.get("payload"):
-                        print(f"[DB_WORKER] skipping RAW_BLOCK with missing fields: {d.keys()}")
-                    else:
-                        # Insert raw block immediately
-                        try:
-                            insert_raw_block(
-                                block_id=d["block_id"],
-                                device_id=d["device_id"],
-                                time_ts_ms=d.get("time") or d.get("ts_ms"),
-                                sample_rate=d.get("sample_rate"),
-                                samples=d.get("samples"),
-                                encoding=d.get("encoding", "int16_binary"),
-                                payload_bytes=d["payload"],
-                                crc32=d.get("crc32")
-                            )
-                        except Exception as e:
-                            print("[DB_WORKER] insert_raw_block failed:", e)
-                            import traceback; traceback.print_exc()
+                    device_id = data["device_id"]
+                    block_id = data["block_id"]
+                    payload = data["payload"]         # bytes
+                    sample_rate = data["sample_rate"]
+                    samples = data["samples"]
+
+                    # store raw block first (binary)
+                    insert_raw_block(block_id=block_id, device_id=device_id, time_ts_ms=data.get("time"),
+                                     sample_rate=sample_rate, samples=samples,
+                                     encoding=data.get("encoding", "int16_binary"), payload_bytes=payload, crc32=data.get("crc32"))
+
+                    # FFT processing (CPU heavy) — do it here or push to separate worker
+                    try:
+                        fft_res = process_raw_payload(payload, sample_rate, samples, accel_sens=16384.0)
+                        freqs = fft_res["freqs"]
+                        # insert per-axis rows
+                        for axis in ("ax", "ay", "az", "magnitude"):
+                            info = fft_res[axis]
+                            insert_spectrum_row(time_ts_ms=data.get("time"), device_id=device_id, block_id=block_id,
+                                                axis=axis, sample_rate=sample_rate, samples=samples,
+                                                freqs=freqs, amps=info["amps"],
+                                                dominant_freq=info["dominant_freq"], dominant_amp=info["dominant_amp"],
+                                                band_energies=info["bands"])
+                    except Exception as e:
+                        print("[DB_WORKER] FFT processing error:", e)
 
                 else:
                     print(f"[DB_WORKER] unknown item type: {typ}")
@@ -638,6 +644,21 @@ def api_get_device_readings(device_id):
     except Exception as e:
         import traceback; traceback.print_exc()
         return jsonify({"msg": "Error retrieving readings", "error": str(e)}), 500
+
+@app.route("/api/devices/<device_id>/spectrum", methods=["GET"])
+@jwt_required()
+def api_get_spectrum(device_id):
+    try:
+        limit = int(request.args.get("limit", "20"))
+    except Exception:
+        limit = 20
+    axis = request.args.get("axis")  # optional 'ax'/'ay'/'az'/'magnitude'
+    try:
+        rows = get_spectrum(device_id, axis=axis, limit=limit)
+        return jsonify({"device_id": device_id, "count": len(rows), "spectrum": rows}), 200
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"msg": "Error retrieving spectrum", "error": str(e)}), 500
 
 if __name__ == "__main__":
     # Start MQTT thread (guarded by __main__ so it does not run on import)

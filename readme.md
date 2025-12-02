@@ -61,8 +61,6 @@ A full stack IoT Vibration monitoring system using: <br>
 * ✅ Sends raw data as chunks __v1/device/<id>/telemetry/raw/chunk/<block_id>/<idx>__
 
 ## Features to Add
-
-
 ### 2.1 Backend
 * 🟥 Establish baseline for device
 * 🟥 Run FFT for raw data
