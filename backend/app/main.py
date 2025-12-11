@@ -1,8 +1,17 @@
+import os
 from flask import Flask
+from flask_cors import CORS
+from dotenv import load_dotenv
 from http_helpers import signup, login, refresh, logout
+from flask_jwt_extended import JWTManager, jwt_required
 
+load_dotenv()
 app = Flask(__name__) 
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "my-secret-key")
+app.config["JWT_ALGORITHM"] = "HS256"
+jwt = JWTManager(app)
 
+CORS(app, resources={r"/api/*": {"origins": ["http://localhost:5173"]}})
 
 # --- AUTHENTICATION ROUTES ---
 @app.route("/api/auth/signup", methods=["POST"])

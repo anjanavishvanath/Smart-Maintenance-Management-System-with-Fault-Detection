@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL DEFAULT 'technician', --  manager / engineer / technician
     organization TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)
+);
 
 -- refresh tokens
 CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -19,4 +19,4 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     revoked BOOLEAN NOT NULL DEFAULT FALSE,
     expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)
+);
