@@ -7,7 +7,7 @@ engine = create_engine(DATABASE_URL, echo=False, future=True, pool_pre_ping=True
 
 #  --- User-related DB operations ---
 def insert_user(username, email, password_hash, role, organization):
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(text(
             """
                 INSERT INTO users (username, email, password_hash, role, organization)
@@ -34,13 +34,13 @@ def get_user_by_email(email) -> dict | None:
 
 # --- Token-related DB operations ---
 def insert_refresh_token(jti, user_id, expires_at):
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(text(
             "INSERT INTO refresh_tokens (jti, user_id, expires_at) VALUES (:jti, :user_id, :expires_at)"
         ), {"jti": jti, "user_id": user_id, "expires_at": expires_at})
 
 def revoke_refresh_token(jti):
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         conn.execute(text(
             "UPDATE refresh_tokens SET revoked = TRUE WHERE jti = :jti"
         ), {"jti": jti})
