@@ -54,3 +54,14 @@ def is_refresh_token_revoked(jti) -> bool:
         if row is None:
             return True  # treat missing token as revoked/invalid
         return bool(row[0])
+    
+def insert_provisioning_token(slpt_value, user_id, enrollment_id, expires_at):
+    with engine.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO provisioning_tokens (slpt_value, user_id, enrollment_id, expires_at) VALUES (:slpt_value, :user_id, :enrollment_id, :expires_at)"
+        ), {
+            "slpt_value": slpt_value, 
+            "user_id": user_id, 
+            "enrollment_id": enrollment_id, 
+            "expires_at": expires_at
+            })

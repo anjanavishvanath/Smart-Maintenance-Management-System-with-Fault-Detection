@@ -1,9 +1,13 @@
 import { useAuth } from "../auth/AuthProvider";
+import { Link } from "react-router-dom";
 
 export default function Dashboard() {
     const {user} = useAuth();
     console.log(user);
     return (
-        <h1>Welcome to the dashboard</h1>
+        <div>
+            <h1>Welcome {user.username}</h1>
+            <Link to="/add_device">Add Device</Link>
+        </div>
     )
 }

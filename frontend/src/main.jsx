@@ -7,6 +7,7 @@ import "./index.css";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import DeviceProvisioning from "./components/DeviceProvisioning";
 
 createRoot(document.getElementById("root")).render(
     <AuthProvider>
@@ -18,6 +19,7 @@ createRoot(document.getElementById("root")).render(
                     <Route path='/login' element={<Login />} />
                     <Route element={<ProtectedRoute />}>
                         <Route path='dashboard' element={<Dashboard />} />
+                        <Route path='add_device' element={<DeviceProvisioning/>}/>
                     </Route>
                 </Route>
             </Routes>

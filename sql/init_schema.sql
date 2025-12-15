@@ -20,3 +20,14 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- provisioning tokens
+CREATE TABLE IF NOT EXISTS provisioning_tokens(
+    id SERIAL PRIMARY KEY,
+    slpt_value TEXT UNIQUE NOT NULL,  -- the generated uuid
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    enrollment_id TEXT NOT NULL,  -- The MAC address / Enrollment ID
+    expires_at TIMESTAMPTZ,  -- When the token becomes invalid
+    is_used BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
