@@ -21,7 +21,7 @@ const DeviceProvisioning = () => {
                 setIsLoading(false);
                 return;
             }
-            const response = await api.post("/provision/request", {
+            const response = await api.post("/devices/provision", {
                 enrollment_id: macAddress.toUpperCase()
             });
             setSlpt(response.data.slpt);
@@ -30,7 +30,7 @@ const DeviceProvisioning = () => {
             console.log("Provisioning error: ", e);
             const errMsg = e.response?.data?.msg || "An unexpected error occured";
             setMessage(`Error: ${errMsg}`);
-        }finally {
+        } finally {
             setIsLoading(false);
         }
     };
@@ -50,10 +50,10 @@ const DeviceProvisioning = () => {
                     />
                 </div>
 
-                <button type="submit" disabled={isLoading}>{isLoading? 'Generating...':'Generate Provision Token'}</button>
+                <button type="submit" disabled={isLoading}>{isLoading ? 'Generating...' : 'Generate Provision Token'}</button>
             </form>
 
-            {message && <p className={slpt? "success-msg":"error-msg"}>{message}</p>}
+            {message && <p className={slpt ? "success-msg" : "error-msg"}>{message}</p>}
             {slpt && (
                 <div className="provisioning-instructions">
                     <h3>Instructions for Device Activation:</h3>

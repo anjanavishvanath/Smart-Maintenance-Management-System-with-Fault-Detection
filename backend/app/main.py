@@ -4,7 +4,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from http_helpers import signup, login, refresh, logout
 from flask_jwt_extended import JWTManager, jwt_required
-from device_helpers import provision_device
+from device_helpers import provision_device, activate_device
 
 load_dotenv()
 app = Flask(__name__) 
@@ -31,10 +31,15 @@ def refresh_route():
 def logout_route():
     return logout()
 
+# --- DEVICE PROVISIONING ROUTES ---
 @app.route('/api/devices/provision', methods=["POST"])
 @jwt_required()
 def request_provisioning_token_route():
-    provision_device()
+    return provision_device()
+
+@app.route('/api/devices/activate', methods=["POST"])
+def activate_device_route():
+    return activate_device()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000) # Start Flask (dev). In production, use WSGI server and run mqtt client separately.

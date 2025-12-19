@@ -31,3 +31,14 @@ CREATE TABLE IF NOT EXISTS provisioning_tokens(
     is_used BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- devices
+CREATE TABLE IF NOT EXISTS devices (
+    id SERIAL PRIMARY KEY,
+    device_mac TEXT UNIQUE NOT NULL,      -- The permanent physical ID
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_name TEXT,
+    os_version TEXT,
+    mqtt_password TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

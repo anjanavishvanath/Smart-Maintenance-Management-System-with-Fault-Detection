@@ -65,3 +65,31 @@ def insert_provisioning_token(slpt_value, user_id, enrollment_id, expires_at):
             "enrollment_id": enrollment_id, 
             "expires_at": expires_at
             })
+        
+def get_provisioning_token(slpt_value) -> dict | None:
+    with engine.connect() as conn:
+        # fetch token, associated user, enrollment_id, and expiry
+        r = conn.execute(text(
+            "SELECT user_id, enrollment_id, expires_at, is_used FROM provisioning_tokens WHERE slpt_value = :slpt"
+        ), {"slpt": slpt_value}).mappings().first()
+        if r is None:
+            return None
+        return dict(r)
+    
+def activate_device_in_db(mac, user_id, mqtt_pass, os_version):
+    with engine.begin() as conn:
+        # Creating permanent device record
+        conn.execute(text(
+            "INSERT INTO devices (device_mac, user_id, mqtt_password, os_version) VALUES (:mac, :user_id, :mqtt_pass, :os_version) "
+            "ON CONFLICT (device_mac) DO UPDATE SET mqtt_password = :pass"
+        ), {
+            "mac": mac,
+            "user_id": user_id,
+            "mqtt_pass": mqtt_pass,
+            "pass": mqtt_pass,
+            "os_version": os_version
+        })
+        # mark the provisioning token as used
+        conn.execute(text(
+            "UPDATE provisioning_tokens SET is_used = TRUE WHERE enrollment_id = :mac"
+        ), {"mac": mac})
