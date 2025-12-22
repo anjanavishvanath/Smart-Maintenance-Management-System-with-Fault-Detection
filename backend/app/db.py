@@ -93,3 +93,15 @@ def activate_device_in_db(mac, user_id, mqtt_pass, os_version):
         conn.execute(text(
             "UPDATE provisioning_tokens SET is_used = TRUE WHERE enrollment_id = :mac"
         ), {"mac": mac})
+
+def insert_asset(name, max_rpm, power, organization, user_id):
+    with engine.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO assets (name, max_rpm, power, organization, user_id) VALUES (:name, :max_rpm, :power, :organization, :user_id)"
+        ), {
+            "name": name,
+            "max_rpm": max_rpm,
+            "power": power,
+            "organization": organization,
+            "user_id": user_id
+        })

@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from http_helpers import signup, login, refresh, logout
 from flask_jwt_extended import JWTManager, jwt_required
 from device_helpers import provision_device, activate_device
+from asset_helpers import add_asset_to_db
 
 load_dotenv()
 app = Flask(__name__) 
@@ -40,6 +41,12 @@ def request_provisioning_token_route():
 @app.route('/api/devices/activate', methods=["POST"])
 def activate_device_route():
     return activate_device()
+
+# --- ASSET MANAGEMENT ROUTES ---
+@app.route('/api/assets/add', methods=["POST"])
+@jwt_required()
+def add_asset_route():
+    return add_asset_to_db()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000) # Start Flask (dev). In production, use WSGI server and run mqtt client separately.

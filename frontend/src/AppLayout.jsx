@@ -13,10 +13,10 @@ export default function AppLayout() {
     return (
         <div>
             {user ? <nav>
-                <img src={logo} alt='preSense logo' className='logo' />
+                <Link to="/dashboard"><img src={logo} alt='preSense logo' className='logo' /></Link>
                 <Link to="logout" onClick={onLogout}>Logout</Link>
             </nav>:null}
             <main><Outlet/></main>
         </div>
-    )
+    );
 }

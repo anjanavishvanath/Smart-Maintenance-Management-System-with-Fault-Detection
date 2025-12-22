@@ -3,7 +3,7 @@ import api from "../api"
 import { useAuth } from "../auth/AuthProvider";
 import { Link } from "react-router-dom";
 
-const DeviceProvisioning = () => {
+export default function DeviceProvisioning() {
     const user = useAuth(); //to ensure the user is logged in
     const [macAddress, setMacAddress] = useState('');
     const [slpt, setSlpt] = useState("");
@@ -36,7 +36,6 @@ const DeviceProvisioning = () => {
     };
     return (
         <div className="provisioning-container">
-            <h2>Device Provisioning Request</h2>
             <form onSubmit={handleProvisionRequest}>
                 <div className="form-group">
                     <label htmlFor="macInput">Device Enrollment ID (MAC Address)</label>
@@ -66,9 +65,6 @@ const DeviceProvisioning = () => {
                     <p>6. Submit the form to complete device activation.</p>
                 </div>
             )}
-            <Link to="/dashboard">Back</Link>
         </div>
     );
 };
-
-export default DeviceProvisioning;

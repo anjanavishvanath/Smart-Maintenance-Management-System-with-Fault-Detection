@@ -6,8 +6,9 @@ export default function Dashboard() {
     console.log(user);
     return (
         <div>
-            <h1>Welcome {user.username}</h1>
-            <Link to="/add_device">Add Device</Link>
+            <h1>Welcome {user.username} | {user.organization}</h1>
+            <Link to="/asset_registry">Asset Registry</Link>
+            <Link to="/sensor_registry">Sensor Registry</Link>
         </div>
-    )
+    );
 }

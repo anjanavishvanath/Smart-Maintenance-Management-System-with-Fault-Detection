@@ -25,7 +25,7 @@ def verify_password(plaintext, hashed) -> bool:
     
 def build_tokens(identity_claims: dict):
     '''
-    identity_claims must contain: {"user_id": int, "email": str, "username": str, "role": str, "organization": str or None}
+    identity_claims must contain: {"user_id": int, "email": str, "username": str, "role": str, "organization": str or None, "user_id": int}
     Returns: (access, refresh, jti, expires_at)
     '''
     identity_str = str(identity_claims.get("user_id"))

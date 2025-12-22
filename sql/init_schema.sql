@@ -42,3 +42,14 @@ CREATE TABLE IF NOT EXISTS devices (
     mqtt_password TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- assets
+CREATE TABLE IF NOT EXISTS assets (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    max_rpm INTEGER NOT NULL DEFAULT 0,
+    power INTEGER NOT NULL DEFAULT 0,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    organization TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
