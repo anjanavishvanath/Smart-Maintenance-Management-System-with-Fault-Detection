@@ -32,6 +32,16 @@ def get_user_by_email(email) -> dict | None:
         # Convert row to plain dictionary to avoid positional index confusion
         return dict(row._mapping)
 
+def get_user_by_id(user_id) -> dict | None:
+    with engine.connect() as conn:
+        r = conn.execute(text(
+             "SELECT id, username, email, password_hash, role, organization FROM users WHERE id = :user_id"
+        ), {"user_id": user_id})
+        row = r.fetchone()
+        if row is None:
+            return None
+        return dict(row._mapping)
+
 # --- Token-related DB operations ---
 def insert_refresh_token(jti, user_id, expires_at):
     with engine.begin() as conn:
@@ -54,7 +64,8 @@ def is_refresh_token_revoked(jti) -> bool:
         if row is None:
             return True  # treat missing token as revoked/invalid
         return bool(row[0])
-    
+
+# --- Sensor Device related DB operations ---
 def insert_provisioning_token(slpt_value, user_id, enrollment_id, expires_at):
     with engine.begin() as conn:
         conn.execute(text(
@@ -94,6 +105,23 @@ def activate_device_in_db(mac, user_id, mqtt_pass, os_version):
             "UPDATE provisioning_tokens SET is_used = TRUE WHERE enrollment_id = :mac"
         ), {"mac": mac})
 
+def row_to_dict(row):
+    d = dict(row)
+    # Serialize datetime objects to ISO format string
+    if 'created_at' in d and d['created_at']:
+        d['created_at'] = d['created_at'].isoformat()
+    if 'expires_at' in d and d['expires_at']:
+        d['expires_at'] = d['expires_at'].isoformat()
+    return d
+
+def get_user_devices(user_id) -> list[dict]:
+    with engine.connect() as conn:
+        r = conn.execute(text(
+            "SELECT id, device_mac, os_version, created_at, device_name, asset_id FROM devices WHERE user_id = :user_id"
+        ), {"user_id": user_id}).mappings().all()
+        return [row_to_dict(row) for row in r]
+
+# --- Asset related DB operations ---
 def insert_asset(name, max_rpm, power, organization, user_id):
     with engine.begin() as conn:
         conn.execute(text(
@@ -104,4 +132,20 @@ def insert_asset(name, max_rpm, power, organization, user_id):
             "power": power,
             "organization": organization,
             "user_id": user_id
+        })
+
+def get_organization_assets(organization) -> list[dict]:
+    with engine.connect() as conn:
+        r = conn.execute(text(
+            "SELECT id, name, max_rpm, power, organization, created_at FROM assets WHERE organization = :organization"
+        ), {"organization": organization}).mappings().all()
+        return [row_to_dict(row) for row in r]
+
+def link_asset_to_device(asset_id, device_mac):
+    with engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE devices SET asset_id = :asset_id WHERE device_mac = :device_mac"
+        ), {
+            "asset_id": asset_id,
+            "device_mac": device_mac
         })

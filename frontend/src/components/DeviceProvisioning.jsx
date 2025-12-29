@@ -49,7 +49,9 @@ export default function DeviceProvisioning() {
                     />
                 </div>
 
-                <button type="submit" disabled={isLoading}>{isLoading ? 'Generating...' : 'Generate Provision Token'}</button>
+                <button type="submit" className="btn btn-primary" disabled={isLoading} style={{ marginTop: '1rem' }}>
+                    {isLoading ? 'Generating...' : 'Generate Provision Token'}
+                </button>
             </form>
 
             {message && <p className={slpt ? "success-msg" : "error-msg"}>{message}</p>}

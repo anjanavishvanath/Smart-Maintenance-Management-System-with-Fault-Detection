@@ -60,7 +60,9 @@ export default function AssetProvisioning() {
                         onChange={(e) => setPower(e.target.value)}
                     />
                 </div>
-                <button type="submit" disabled={isLoading}>Add Asset</button>
+                <button type="submit" className="btn btn-primary" disabled={isLoading} style={{ marginTop: '1rem' }}>
+                    {isLoading ? 'Processing...' : 'Add Asset'}
+                </button>
             </form>
         </div>
     )

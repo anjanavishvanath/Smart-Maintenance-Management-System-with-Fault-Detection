@@ -4,7 +4,7 @@ from flask_jwt_extended import get_jwt_identity
 from provision_logic import generate_slpt
 import secrets
 from datetime import datetime, timezone
-from db import get_provisioning_token, activate_device_in_db
+from db import get_provisioning_token, activate_device_in_db, link_asset_to_device, get_user_devices
 
 def provision_device():
     user_identity = get_jwt_identity()
@@ -59,3 +59,25 @@ def activate_device():
     except Exception as e:
         print(f"Error activating device: {e}")
         return jsonify({"msg": "Internal server error during device activation"}), 500
+
+def get_devices_for_user():
+    user_identity = get_jwt_identity()
+    user_id = int(user_identity)
+    try:
+        devices = get_user_devices(user_id)
+        return jsonify({"devices": devices}), 200
+    except Exception as e:
+        print(f"Error retrieving devices: {e}")
+        return jsonify({"msg": "Internal server error during device retrieval"}), 500
+
+def link_sensor_to_asset():
+    data = request.get_json()
+    device_mac = data.get("device_mac").upper().strip()
+    asset_id = data.get("asset_id") # can be none to decouple
+    try:
+        link_asset_to_device(asset_id, device_mac)
+        return jsonify({"msg": "Asset linked to device successfully"}), 200
+    except Exception as e:
+        print(f"Error linking asset to device: {e}")
+        return jsonify({"msg": "Internal server error during asset linking"}), 500
+    

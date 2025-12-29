@@ -60,7 +60,6 @@ a:hover {
 /* Split screen: Left side image buffer */
 .buffer-pane {
     display: flex;
-    /* Changed to flex to handle image better if needed, or hidden on mobile */
     width: 50%;
     position: relative;
     background-color: #000;
@@ -72,13 +71,10 @@ a:hover {
     height: 100%;
     object-fit: cover;
     opacity: 0.6;
-    /* Dim the image slightly */
     filter: grayscale(40%) contrast(1.2);
-    /* Industrial gritty look */
 }
 
 .buffer-pane::after {
-    /* Overlay gradient */
     content: '';
     position: absolute;
     top: 0;
@@ -88,7 +84,6 @@ a:hover {
     background: linear-gradient(135deg, rgba(18, 18, 18, 0.8) 0%, rgba(30, 30, 36, 0.4) 100%);
 }
 
-/* Right side form area */
 .form-container>form {
     width: 50%;
     display: flex;
@@ -212,18 +207,15 @@ a:hover {
     font-size: 0.9rem;
 }
 
-/* Footer links */
 form h3 {
     font-size: 0.9rem;
     color: var(--text-secondary);
     font-weight: 400;
 }
 
-/* Responsive Styling */
 @media (max-width: 900px) {
     .buffer-pane {
         display: none;
-        /* Hide image on tablet/mobile */
     }
 
     .form-container>form {
@@ -231,4 +223,195 @@ form h3 {
         padding: 2rem;
         box-shadow: none;
     }
+}
+
+/* --- Extended Application Layout --- */
+
+.main-layout {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* Navbar */
+.navbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 2rem;
+    background-color: var(--bg-panel);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.navbar .logo {
+    height: 40px;
+    width: auto;
+    filter: drop-shadow(0 0 5px rgba(0, 188, 212, 0.5));
+}
+
+.nav-links {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.nav-links a,
+.nav-links button {
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+}
+
+.nav-links a:hover,
+.nav-links button:hover {
+    color: var(--accent-primary);
+}
+
+.page-content {
+    flex: 1;
+    padding: 2rem;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Common Text Styles */
+h1 {
+    font-family: var(--font-heading);
+    color: #fff;
+    font-size: 2rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+    display: inline-block;
+    min-width: 200px;
+}
+
+h2 {
+    font-family: var(--font-heading);
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+}
+
+/* Text highlight/subtext */
+.text-highlight {
+    color: var(--accent-primary);
+}
+
+.text-muted {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+/* Cards */
+.card {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 1.5rem;
+    transition: transform var(--transition-speed), border-color var(--transition-speed);
+}
+
+.card:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.card h3 {
+    color: var(--accent-primary);
+    margin-bottom: 0.5rem;
+    font-size: 1.2rem;
+    font-family: var(--font-heading);
+}
+
+.card p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+
+.grid-view {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+/* Buttons (Generic) */
+button {
+    cursor: pointer;
+}
+
+.btn {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: var(--bg-input);
+    color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.btn:hover {
+    background-color: #32323e;
+    border-color: var(--text-secondary);
+    text-decoration: none;
+}
+
+.btn-primary {
+    background-color: var(--accent-primary);
+    color: var(--bg-dark);
+    border: none;
+    font-weight: 600;
+}
+
+.btn-primary:hover {
+    background-color: var(--accent-hover);
+}
+
+/* Tables (Simple CSS Grid or basic table) */
+/* We'll use cards for now as requested for modern look */
+
+/* Form adjustments for inner pages */
+.provisioning-container {
+    max-width: 600px;
+    background-color: var(--bg-panel);
+    padding: 2rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    margin-top: 1rem;
+}
+
+.provisioning-instructions {
+    background-color: #1a1a20;
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+    border-left: 3px solid var(--accent-primary);
+    border-radius: 4px;
+}
+
+.slpt-code {
+    display: block;
+    font-family: monospace;
+    background-color: #000;
+    color: var(--accent-primary);
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 4px;
+    font-size: 1.2rem;
+    letter-spacing: 1px;
 }

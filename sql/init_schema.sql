@@ -32,17 +32,6 @@ CREATE TABLE IF NOT EXISTS provisioning_tokens(
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- devices
-CREATE TABLE IF NOT EXISTS devices (
-    id SERIAL PRIMARY KEY,
-    device_mac TEXT UNIQUE NOT NULL,      -- The permanent physical ID
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    device_name TEXT,
-    os_version TEXT,
-    mqtt_password TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 -- assets
 CREATE TABLE IF NOT EXISTS assets (
     id SERIAL PRIMARY KEY,
@@ -51,5 +40,17 @@ CREATE TABLE IF NOT EXISTS assets (
     power INTEGER NOT NULL DEFAULT 0,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     organization TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- devices
+CREATE TABLE IF NOT EXISTS devices (
+    id SERIAL PRIMARY KEY,
+    device_mac TEXT UNIQUE NOT NULL,      -- The permanent physical ID
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_name TEXT,
+    os_version TEXT,
+    mqtt_password TEXT NOT NULL,
+    asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
