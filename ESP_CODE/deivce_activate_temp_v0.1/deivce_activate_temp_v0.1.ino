@@ -6,7 +6,7 @@
 const char* WIFI_SSID = "SLT_FIBRE";
 const char* WIFI_PASS = "Anji@123";
 const char* ACTIVATION_URL = "http://192.168.1.2:5000/api/devices/activate";
-String slpt = "ba22ba5c-b564-4ebd-9285-8ef6bcc893fb";
+String slpt = "e215ed81-77b4-4475-87f8-3435dd779fb1";
 
 // --- Global Objects ---
 Preferences preferences;
@@ -86,7 +86,7 @@ void activateDevice() {
     Serial.println(response);
     // --- DESERIALIZE WITH ARDUINO JSON ---
     StaticJsonDocument<512> activationResponse;
-    DeserializationError = deserializeJson(activationResponse, response);
+    DeserializationError error= deserializeJson(activationResponse, response);
     if (error) {
       Serial.print("deserializeJson() failed: ");
       Serial.println(error.f_str());

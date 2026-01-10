@@ -149,3 +149,17 @@ def link_asset_to_device(asset_id, device_mac):
             "asset_id": asset_id,
             "device_mac": device_mac
         })
+
+# --- Sensor data related DB operations ---
+def insert_sensor_data(time, device_mac, asset_id, x, y, z):
+    with engine.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO sensor_data (time, device_mac, asset_id, accel_x, accel_y, accel_z) VALUES (:time, :device_mac, :asset_id, :x, :y, :z)"
+        ), {
+            "time": time,
+            "device_mac": device_mac,
+            "asset_id": asset_id,
+            "x": x,
+            "y": y,
+            "z": z
+        })

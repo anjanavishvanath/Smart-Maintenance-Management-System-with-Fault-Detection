@@ -54,3 +54,17 @@ CREATE TABLE IF NOT EXISTS devices (
     asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- sensor_data
+CREATE TABLE IF NOT EXISTS sensor_data (
+    time TIMESTAMPTZ NOT NULL,
+    device_mac TEXT NOT NULL,
+    asset_id INTEGER, -- We link it to the asset here too for fast queries
+    accel_x DOUBLE PRECISION,
+    accel_y DOUBLE PRECISION,
+    accel_z DOUBLE PRECISION 
+);
+-- Transform it into a hypertable and partition data by time automatically
+SELECT create_hypertable('sensor_data', 'time', if_not_exists => TRUE);
+-- Creating an index for fast lookups by device
+CREATE INDEX IF NOT EXISTS idx_device_time ON sensor_data (device_mac, time DESC);

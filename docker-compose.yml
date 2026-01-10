@@ -10,6 +10,8 @@ services:
       - PYTHONUNBUFFERED=1
     ports:
       - "5000:5000"
+    networks:
+      - mqtt_network
     volumes:
       - ./backend/app:/usr/src/app/app
 
@@ -22,6 +24,8 @@ services:
       POSTGRES_DB: cm_db
     ports:
       - "5432:5432"
+    networks:
+      - mqtt_network
     volumes:
       - ./sql:/docker-entrypoint-initdb.d:ro # binds the local /sql directory to the container's init directory. :ro avoids accidental container writes.
       - ./pgdata:/var/lib/postgresql/data # This is for persistent data storage
@@ -31,6 +35,35 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    
+  mqtt_broker:
+    image: eclipse-mosquitto:latest
+    container_name: cm_mqtt_broker
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    networks:
+      - mqtt_network
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+  mqtt_ingestor:
+    build: ./backend
+    container_name: cm_mqtt_ingestor
+    command: python mqtt_ingestor.py
+    depends_on:
+      - mqtt_broker
+      - timescaledb
+    networks:
+      - mqtt_network
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://cm_user:cm_pass@timescaledb:5432/cm_db
+      - MQTT_BROKER=mqtt_broker
+    volumes:
+      - ./backend/app:/usr/src/app
 
 networks:
   mqtt_network:
