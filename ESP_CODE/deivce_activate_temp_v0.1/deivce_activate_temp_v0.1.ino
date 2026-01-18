@@ -1,3 +1,11 @@
+/*
+ESP32 activation through SLPT test
+ - ESP as a station
+ - WiFi cred hardcoded
+ - SLPT hardcoded for activation
+ - Data saved to NVS but not used 
+*/
+
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <Preferences.h>

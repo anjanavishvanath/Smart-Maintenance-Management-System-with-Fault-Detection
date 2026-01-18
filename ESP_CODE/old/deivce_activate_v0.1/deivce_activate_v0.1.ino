@@ -1,3 +1,11 @@
+/*
+Failed ESP32 activation test
+ - Tried to start as an AP to get user to enter WiFi cred and SLPT
+ - Then ESP tries to connect as a STA to activate itself
+ - But during mode switch the whole thing resets (Brownout?)
+ - Try with a better powersupply
+*/ 
+
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Preferences.h>
@@ -74,7 +82,7 @@ void activateDevice (String slpt) {
   } else{
     Serial.print("Activation Failed. Error code: ");
     Serial.println(httpResponseCode);
-    // todo: check for 401/403 for expiration of slpt. (For now backend is just sending 500)
+    // todo: check for 401/403 for expiration of slpt. (For STA backend is just sending 500)
     Serial.println("Falling back to softAP");
     startSoftAP();
   }
