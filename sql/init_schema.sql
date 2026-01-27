@@ -68,3 +68,17 @@ CREATE TABLE IF NOT EXISTS sensor_data (
 SELECT create_hypertable('sensor_data', 'time', if_not_exists => TRUE);
 -- Creating an index for fast lookups by device
 CREATE INDEX IF NOT EXISTS idx_device_time ON sensor_data (device_mac, time DESC);
+
+CREATE TABLE asset_health_metrics (
+    time TIMESTAMPTZ NOT NULL,
+    asset_id INT NOT NULL,
+    rms_x FLOAT,
+    rms_y FLOAT,
+    rms_z FLOAT,
+    dom_freq_x FLOAT,
+    peak_to_peak_z FLOAT,
+    condition_score INT -- 0 for Healthy, 1 for Warning, 2 for Critical
+);
+-- Convert to hypertable for TimescaleDB performance
+SELECT create_hypertable('asset_health_metrics', 'time');
+CREATE INDEX IF NOT EXISTS idx_asset_health_time ON asset_health_metrics (asset_id, time DESC);

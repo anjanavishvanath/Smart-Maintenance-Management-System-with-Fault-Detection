@@ -6,6 +6,7 @@ from http_helpers import signup, login, refresh, logout
 from flask_jwt_extended import JWTManager, jwt_required
 from device_helpers import provision_device, activate_device, link_sensor_to_asset, get_devices_for_user
 from asset_helpers import add_asset_to_db, get_assets_by_organization
+from db import get_asset_spectrum, get_asset_health
 
 load_dotenv()
 app = Flask(__name__) 
@@ -64,6 +65,15 @@ def add_asset_route():
 def get_assets_by_organization_route(): 
     return get_assets_by_organization()
 
+@app.get("/api/analytics/spectrum/<int:asset_id>")
+@jwt_required()
+def get_asset_spectrum_route(asset_id: int):
+    return get_asset_spectrum(asset_id)
+
+@app.get("/api/analytics/health/<int:asset_id>")
+@jwt_required()
+def get_asset_health_route(asset_id: int):
+    return get_asset_health(asset_id)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000) # Start Flask (dev). In production, use WSGI server and run mqtt client separately.

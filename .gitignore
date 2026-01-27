@@ -2,3 +2,5 @@ backend/.env
 backend/app/ca-chain.pem
 pgdata/
 backend/app/__pycache__/
+ESP_CODE/old
+vibration_sensor

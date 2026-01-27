@@ -2,7 +2,8 @@ import os
 import json
 import paho.mqtt.client as mqtt
 from datetime import datetime, timezone
-from db import insert_sensor_data
+from db import insert_sensor_data, insert_sensor_metrics
+from processing import calculate_vibration_metrics
 
 # --- CONFIG ---
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mqtt_broker")
@@ -18,7 +19,7 @@ def on_connect(client, userdata, flags, rc):
         print(f"Connection failed with code {rc}", flush=True)
 
 def on_message(client, userdata, msg):
-    print(f"\nMESSAGE RECEIVED: {msg.topic}", flush=True)
+    # print(f"\nMESSAGE RECEIVED: {msg.topic}", flush=True)
     try:
         payload_str = msg.payload.decode()
         payload = json.loads(payload_str)
@@ -32,7 +33,8 @@ def on_message(client, userdata, msg):
         asset_id = int(parts[2]) if parts[2].isdigit() else 0
         
         if "samples" in payload:
-            for sample in payload["samples"]:
+            raw_samples = payload["samples"]
+            for sample in raw_samples:
                 time = datetime.now(timezone.utc)
                 insert_sensor_data(
                     time, device_mac, asset_id,
@@ -41,6 +43,38 @@ def on_message(client, userdata, msg):
                     float(sample.get("az", 0))
                 )
             print(f"Successfully stored batch from {device_mac}", flush=True)
+            # Extract arrays
+            x_vals = [float(s.get("ax", 0)) for s in raw_samples]
+            y_vals = [float(s.get("ay", 0)) for s in raw_samples]
+            z_vals = [float(s.get("az", 0)) for s in raw_samples]
+            # Calculate Metrics
+            mx = calculate_vibration_metrics(x_vals, sampling_rate=200)
+            my = calculate_vibration_metrics(y_vals, sampling_rate=200)
+            mz = calculate_vibration_metrics(z_vals, sampling_rate=200)
+            
+            if mx is None or my is None or mz is None:
+                print(f"No valid samples to process for device {device_mac}", flush=True)
+                return
+            # Determine condition score 
+            # (Simple heuristic: RMS > 0.5 (warning), >1.0 (critical))
+            score = 0
+            max_rms = max(mx["rms"], my["rms"], mz["rms"])
+            if max_rms > 1.0:
+                score = 2
+            elif max_rms > 0.5:
+                score = 1
+            # Save Metrics. One row per batch.
+            insert_sensor_metrics(
+                time=datetime.now(timezone.utc),
+                asset_id=asset_id,
+                rms_x=mx['rms'],
+                rms_y=my['rms'],
+                rms_z=mz['rms'],
+                peak_to_peak_z=mz['peak_to_peak'],
+                dominant_freq_x=mx['dominant_freq'],
+                condition_score=score
+            )
+            print(f"Inserted metrics for asset {asset_id} (Condition Score: {score})", flush=True)
 
     except Exception as e:
         print(f"Error processing message: {e}", flush=True)

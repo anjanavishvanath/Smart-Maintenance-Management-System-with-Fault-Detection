@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine, text
 import os
+from processing import calculate_vibration_metrics
 
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://cm_user:cm_pass@timescaledb:5432/cm_db')
 
@@ -163,3 +164,84 @@ def insert_sensor_data(time, device_mac, asset_id, x, y, z):
             "y": y,
             "z": z
         })
+
+def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_z, peak_to_peak_z, dominant_freq_x, condition_score=0):
+    with engine.begin() as conn:
+        conn.execute(text(
+            """INSERT INTO asset_health_metrics 
+               (time, asset_id, rms_x, rms_y, rms_z, dom_freq_x, peak_to_peak_z, condition_score) 
+               VALUES (:time, :asset_id, :rms_x, :rms_y, :rms_z, :dominant_freq_x, :peak_to_peak_z, :condition_score)"""
+        ), {
+            "time": time,
+            "asset_id": asset_id,
+            "rms_x": rms_x,
+            "rms_y": rms_y,
+            "rms_z": rms_z,
+            "dominant_freq_x": dominant_freq_x,
+            "peak_to_peak_z": peak_to_peak_z,
+            "condition_score": condition_score
+        })
+
+def get_asset_spectrum(asset_id: int, limit: int = 500):
+    query = text("""
+        SELECT accel_x, accel_y, accel_z 
+        FROM sensor_data 
+        WHERE asset_id = :asset_id 
+        ORDER BY time DESC 
+        LIMIT :limit
+    """)
+
+    with engine.connect() as conn:
+        result = conn.execute(query, {"asset_id": asset_id, "limit": limit}).fetchall()
+    
+    if not result:
+        return {"error": "No data found"}
+
+    # Separate X, Y, Z for individual analysis
+    x_samples = [r[0] for r in result]
+    y_samples = [r[1] for r in result]
+    z_samples = [r[2] for r in result]
+
+    # Process the X-axis (as an example)
+    # IMPORTANT: Ensure 'sampling_rate' matches your ESP32 code!
+    metrics_x = calculate_vibration_metrics(x_samples, sampling_rate=200)
+    metrics_y = calculate_vibration_metrics(y_samples, sampling_rate=200)
+    metrics_z = calculate_vibration_metrics(z_samples, sampling_rate=200)
+    return {
+        "asset_id": asset_id,
+        "metrics": {
+            "x": metrics_x,
+            "y": metrics_y,
+            "z": metrics_z
+        }
+    }
+
+def get_asset_health(asset_id: int, limit: int = 50):
+    query = text("""
+        SELECT time, rms_x, rms_y, rms_z, dom_freq_x, peak_to_peak_z, condition_score
+        FROM asset_health_metrics 
+        WHERE asset_id = :asset_id 
+        ORDER BY time DESC 
+        LIMIT :limit
+    """)
+
+    with engine.connect() as conn:
+        result = conn.execute(query, {"asset_id": asset_id, "limit": limit}).fetchall()
+    
+    if not result:
+        return {"history": []}
+
+    # Convert the rows into a list of dictionaries for the frontend
+    history = []
+    for r in reversed(result): # Reverse so the chart flows from Oldest -> Newest (left to right)
+        history.append({
+            "time": r[0].isoformat(),
+            "rms_x": float(r[1]),
+            "rms_y": float(r[2]),
+            "rms_z": float(r[3]),
+            "dom_freq": float(r[4]),
+            "peak_to_peak": float(r[5]),
+            "score": float(r[6])
+        })
+
+    return {"history": history}
