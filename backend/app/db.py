@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, text
 import os
 from processing import calculate_vibration_metrics
+import numpy as np
 
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://cm_user:cm_pass@timescaledb:5432/cm_db')
 
@@ -165,18 +166,19 @@ def insert_sensor_data(time, device_mac, asset_id, x, y, z):
             "z": z
         })
 
-def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_z, peak_to_peak_z, dominant_freq_x, condition_score=0):
+def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_total, rms_z, peak_to_peak_z, dominant_freq_x, condition_score=0):
     with engine.begin() as conn:
         conn.execute(text(
             """INSERT INTO asset_health_metrics 
-               (time, asset_id, rms_x, rms_y, rms_z, dom_freq_x, peak_to_peak_z, condition_score) 
-               VALUES (:time, :asset_id, :rms_x, :rms_y, :rms_z, :dominant_freq_x, :peak_to_peak_z, :condition_score)"""
+               (time, asset_id, rms_x, rms_y, rms_total, rms_z, dom_freq_x, peak_to_peak_z, condition_score) 
+               VALUES (:time, :asset_id, :rms_x, :rms_y, :rms_total, :rms_z, :dominant_freq_x, :peak_to_peak_z, :condition_score)"""
         ), {
             "time": time,
             "asset_id": asset_id,
             "rms_x": rms_x,
             "rms_y": rms_y,
             "rms_z": rms_z,
+            "rms_total": rms_total,
             "dominant_freq_x": dominant_freq_x,
             "peak_to_peak_z": peak_to_peak_z,
             "condition_score": condition_score
@@ -218,7 +220,7 @@ def get_asset_spectrum(asset_id: int, limit: int = 500):
 
 def get_asset_health(asset_id: int, limit: int = 50):
     query = text("""
-        SELECT time, rms_x, rms_y, rms_z, dom_freq_x, peak_to_peak_z, condition_score
+        SELECT time, rms_x, rms_y, rms_z, rms_total, dom_freq_x, peak_to_peak_z, condition_score
         FROM asset_health_metrics 
         WHERE asset_id = :asset_id 
         ORDER BY time DESC 
@@ -231,17 +233,70 @@ def get_asset_health(asset_id: int, limit: int = 50):
     if not result:
         return {"history": []}
 
-    # Convert the rows into a list of dictionaries for the frontend
     history = []
-    for r in reversed(result): # Reverse so the chart flows from Oldest -> Newest (left to right)
+    for r in reversed(result):
         history.append({
             "time": r[0].isoformat(),
             "rms_x": float(r[1]),
             "rms_y": float(r[2]),
             "rms_z": float(r[3]),
-            "dom_freq": float(r[4]),
-            "peak_to_peak": float(r[5]),
-            "score": float(r[6])
+            "rms_total": float(r[4]), # ADD THIS
+            "dom_freq": float(r[5]),
+            "peak_to_peak": float(r[6]),
+            "score": int(r[7]) 
         })
-
     return {"history": history}
+
+
+import numpy as np
+from sqlalchemy import text
+
+def calculate_and_set_baseline(asset_id: int):
+    # Fetch total along with individual axes
+    query = text("""
+        SELECT rms_x, rms_y, rms_z, rms_total 
+        FROM asset_health_metrics 
+        WHERE asset_id = :asset_id AND condition_score = 0
+        ORDER BY time DESC LIMIT 100
+    """)
+    
+    with engine.connect() as conn:
+        result = conn.execute(query, {"asset_id": asset_id}).fetchall()
+        
+        if len(result) < 10:
+            return {"error": "Need at least 10 healthy samples."}
+
+        data = np.array(result)
+        means = np.mean(data, axis=0)
+        stds = np.std(data, axis=0)
+
+        upsert_query = text("""
+            INSERT INTO asset_baselines 
+                (asset_id, mean_rms_x, std_rms_x, mean_rms_y, std_rms_y, 
+                 mean_rms_z, std_rms_z, mean_rms_total, std_rms_total, calibrated_at)
+            VALUES 
+                (:id, :mx, :sx, :my, :sy, :mz, :sz, :mt, :st, CURRENT_TIMESTAMP)
+            ON CONFLICT (asset_id) DO UPDATE SET
+                mean_rms_total = EXCLUDED.mean_rms_total,
+                std_rms_total = EXCLUDED.std_rms_total,
+                calibrated_at = EXCLUDED.calibrated_at
+        """)
+        
+        conn.execute(upsert_query, {
+            "id": asset_id,
+            "mx": float(means[0]), "sx": float(stds[0]),
+            "my": float(means[1]), "sy": float(stds[1]),
+            "mz": float(means[2]), "sz": float(stds[2]),
+            "mt": float(means[3]), "st": float(stds[3]) # THE NEW TOTALS
+        })
+        conn.commit()
+
+def get_asset_baseline(asset_id: int):
+    query = text("SELECT * FROM asset_baselines WHERE asset_id = :asset_id")
+    with engine.connect() as conn:
+        row = conn.execute(query, {"asset_id": asset_id}).fetchone()
+        if not row:
+            return None
+        # Convert row to dict (handle SQLAlchemy Row object)
+        return dict(row._mapping)
+    

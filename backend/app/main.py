@@ -1,12 +1,12 @@
 import os
-from flask import Flask
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 from http_helpers import signup, login, refresh, logout
 from flask_jwt_extended import JWTManager, jwt_required
-from device_helpers import provision_device, activate_device, link_sensor_to_asset, get_devices_for_user
+from device_helpers import provision_device, activate_device, link_sensor_to_asset, get_devices_for_user, set_asset_baseline 
 from asset_helpers import add_asset_to_db, get_assets_by_organization
-from db import get_asset_spectrum, get_asset_health
+from db import get_asset_spectrum, get_asset_health, get_asset_baseline
 
 load_dotenv()
 app = Flask(__name__) 
@@ -74,6 +74,18 @@ def get_asset_spectrum_route(asset_id: int):
 @jwt_required()
 def get_asset_health_route(asset_id: int):
     return get_asset_health(asset_id)
+
+@app.route("/api/assets/baseline/<int:asset_id>", methods=["GET", "POST"])
+@jwt_required()
+def handle_asset_baseline(asset_id: int):
+    if request.method == "POST":
+        return set_asset_baseline(asset_id)
+    
+    # It's a GET request
+    baseline = get_asset_baseline(asset_id)
+    if not baseline:
+        return jsonify({"error": "No baseline found"}), 404
+    return jsonify(baseline), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000) # Start Flask (dev). In production, use WSGI server and run mqtt client separately.

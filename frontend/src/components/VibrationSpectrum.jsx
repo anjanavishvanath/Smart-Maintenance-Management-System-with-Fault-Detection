@@ -42,6 +42,9 @@ export default function VibrationSpectrum({ data }) {
     plugins: {
       legend: { labels: { color: '#e0e0e0' } },
     },
+    animation: {
+        duration: 500, // 0.5s transition vs the default 1s
+    },
     scales: {
       x: { 
         grid: { color: '#333' }, 

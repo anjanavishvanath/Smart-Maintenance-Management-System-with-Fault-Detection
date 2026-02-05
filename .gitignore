@@ -4,3 +4,5 @@ pgdata/
 backend/app/__pycache__/
 ESP_CODE/old
 vibration_sensor
+node_modules/
+mosquitto/log/mosquitto.log

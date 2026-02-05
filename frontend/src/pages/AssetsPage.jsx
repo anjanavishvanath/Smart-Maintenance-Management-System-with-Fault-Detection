@@ -1,6 +1,7 @@
 import { useAuth } from "../auth/AuthProvider";
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { toast } from 'react-toastify';
 import AssetProvisioning from "../components/AssetProvisioning";
 import api from "../api";
 import VibrationSpectrum from "../components/VibrationSpectrum";
@@ -13,6 +14,8 @@ export default function AssetPage() {
     const [assets, setAssets] = useState([]);
     const [spectrumData, setSpectrumData] = useState(null);
     const [healthHistory, setHealthHistory] = useState([]);
+    const [isCalibrating, setIsCalibrating] = useState(false);
+    const [baselineData, setBaselineData] = useState(null);
 
     const fetchAssets = async () => {
         try {
@@ -22,7 +25,7 @@ export default function AssetPage() {
         } catch (error) {
             console.error("Error fetching assets:", error);
         }
-    }
+    };
 
     const fetchData = async () => {
         if (!selectedAsset) return;
@@ -35,10 +38,26 @@ export default function AssetPage() {
             // Fetch Trend History
             const healthRes = await api.get(`/analytics/health/${selectedAsset}`);
             setHealthHistory(healthRes.data.history);
+
+            const baselineRes = await api.get(`/assets/baseline/${selectedAsset}`);
+            setBaselineData(baselineRes.data);
         } catch (error) {
             console.error("Error fetching spectrum:", error);
         }
-    }
+    };
+
+    const handleSetBaseline = async (assetId) => {
+        setIsCalibrating(true);
+        try {
+            const response = await api.post(`/assets/baseline/${assetId}`);
+            console.log(response.data.message);
+            toast.success("Baseline calibration initiated successfully.");
+        } catch (error) {
+            toast.error("Failed to initiate baseline calibration.");
+        } finally {
+            setIsCalibrating(false);
+        }
+    };
 
     useEffect(() => { fetchAssets(); }, []);
 
@@ -66,9 +85,19 @@ export default function AssetPage() {
 
             {selectedAsset === asset.id && (
                 <>
+                    <div className="asset-controls">
+                        <button
+                            className="btn btn-secondary"
+                            onClick={() => handleSetBaseline(asset.id)}
+                            disabled={isCalibrating}
+                        >
+                            {isCalibrating ? "Calibrating..." : "Set Baseline"}
+                        </button>
+                        <p className="text-muted">* Ensure machine is running in a healthy state before calibrating.</p>
+                    </div>
                     <div className="chart-card">
                         <h3>Vibration Trend (Health)</h3>
-                        <HealthTrend history={healthHistory} />
+                        <HealthTrend history={healthHistory} baseline={baselineData}/>
                     </div>
                     <div className="chart-card">
                         <h3>Diagnostic Spectrum (FFT)</h3>

@@ -4,7 +4,7 @@ from flask_jwt_extended import get_jwt_identity
 from provision_logic import generate_slpt
 import secrets
 from datetime import datetime, timezone
-from db import get_provisioning_token, activate_device_in_db, link_asset_to_device, get_user_devices
+from db import get_provisioning_token, activate_device_in_db, link_asset_to_device, get_user_devices, calculate_and_set_baseline
 
 def provision_device():
     user_identity = get_jwt_identity()
@@ -81,3 +81,9 @@ def link_sensor_to_asset():
         print(f"Error linking asset to device: {e}")
         return jsonify({"msg": "Internal server error during asset linking"}), 500
     
+def set_asset_baseline(asset_id: int):
+    # This calls the function we added to db.py
+    result = calculate_and_set_baseline(asset_id)
+    if "error" in result:
+        return jsonify(result), 400
+    return jsonify(result), 200

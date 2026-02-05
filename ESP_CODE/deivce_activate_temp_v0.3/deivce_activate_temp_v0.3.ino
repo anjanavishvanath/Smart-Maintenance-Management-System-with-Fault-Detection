@@ -25,9 +25,9 @@ const char* WIFI_PASS = "Anji@123";
 const char* NVS_NAMESPACE = "device_config";
 const char* ACTIVATED = "is_activated";
 // [TODO] pull broker url, mqtt username, password, activaton url from backend and save in NVS as well
-String mqttBroker = "192.168.1.4";
+String mqttBroker = "192.168.1.3";
 String ACTIVATION_URL = "http://" + mqttBroker + ":5000/api/devices/activate";
-String slpt = "d07fb7bb-1661-4010-b75e-617bd5b44811";
+String slpt = "d97759a3-23ee-436f-adfd-bdba6e59da7f";
 
 // --- Global Variables ---
 String deviceTopic = "";

@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS assets (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     max_rpm INTEGER NOT NULL DEFAULT 0,
-    power INTEGER NOT NULL DEFAULT 0,
+    power FLOAT NOT NULL DEFAULT 0,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     organization TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -75,6 +75,7 @@ CREATE TABLE asset_health_metrics (
     rms_x FLOAT,
     rms_y FLOAT,
     rms_z FLOAT,
+    rms_total FLOAT,
     dom_freq_x FLOAT,
     peak_to_peak_z FLOAT,
     condition_score INT -- 0 for Healthy, 1 for Warning, 2 for Critical
@@ -82,3 +83,17 @@ CREATE TABLE asset_health_metrics (
 -- Convert to hypertable for TimescaleDB performance
 SELECT create_hypertable('asset_health_metrics', 'time');
 CREATE INDEX IF NOT EXISTS idx_asset_health_time ON asset_health_metrics (asset_id, time DESC);
+
+CREATE TABLE asset_baselines (
+    asset_id INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+    mean_rms_x FLOAT DEFAULT 0.0,
+    std_rms_x FLOAT DEFAULT 0.0,
+    mean_rms_y FLOAT DEFAULT 0.0,
+    std_rms_y FLOAT DEFAULT 0.0,
+    mean_rms_z FLOAT DEFAULT 0.0,
+    std_rms_z FLOAT DEFAULT 0.0,
+    mean_rms_total FLOAT DEFAULT 0.0,
+    std_rms_total FLOAT DEFAULT 0.0,
+    calibrated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    
+);
