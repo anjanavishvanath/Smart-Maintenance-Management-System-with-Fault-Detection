@@ -166,12 +166,12 @@ def insert_sensor_data(time, device_mac, asset_id, x, y, z):
             "z": z
         })
 
-def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_total, rms_z, peak_to_peak_z, dominant_freq_x, condition_score=0):
+def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_total, rms_z, peak_to_peak_z, dominant_freq_x, dominant_freq_y, dominant_freq_z, condition_score=0):
     with engine.begin() as conn:
         conn.execute(text(
             """INSERT INTO asset_health_metrics 
-               (time, asset_id, rms_x, rms_y, rms_total, rms_z, dom_freq_x, peak_to_peak_z, condition_score) 
-               VALUES (:time, :asset_id, :rms_x, :rms_y, :rms_total, :rms_z, :dominant_freq_x, :peak_to_peak_z, :condition_score)"""
+               (time, asset_id, rms_x, rms_y, rms_total, rms_z, dom_freq_x, dom_freq_y, dom_freq_z, peak_to_peak_z, condition_score) 
+               VALUES (:time, :asset_id, :rms_x, :rms_y, :rms_total, :rms_z, :dominant_freq_x, :dominant_freq_y, :dominant_freq_z, :peak_to_peak_z, :condition_score)"""
         ), {
             "time": time,
             "asset_id": asset_id,
@@ -180,6 +180,8 @@ def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_total, rms_z, peak_t
             "rms_z": rms_z,
             "rms_total": rms_total,
             "dominant_freq_x": dominant_freq_x,
+            "dominant_freq_y": dominant_freq_y,
+            "dominant_freq_z": dominant_freq_z,
             "peak_to_peak_z": peak_to_peak_z,
             "condition_score": condition_score
         })

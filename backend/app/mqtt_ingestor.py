@@ -71,12 +71,9 @@ def on_message(client, userdata, msg):
             if baseline and baseline.get('std_rms_total') and baseline['std_rms_total'] > 0:
                 # 2. Calculate Z-Score
                 mu = baseline['mean_rms_total']
-                sigma = baseline['std_rms_total']
+                sigma = max(baseline['std_rms_total'], 0.01) # Using a noise floor for sigma to prevent division by zero and over-sensitivity on very still machines
     
-                # Using a 'noise floor' for sigma to prevent division by zero and over-sensitivity on very still machines
-                sigma = max(sigma, 0.01) 
-    
-                z_score = (total_rms - mu) / sigma if sigma > 0 else 0
+                z_score = (total_rms - mu) / sigma
 
                 # 3. Dynamic Scoring based on statistical deviation
                 if z_score > 3:   # 99.7% deviation - Something is definitely wrong
@@ -110,6 +107,8 @@ def on_message(client, userdata, msg):
                 rms_total=round(total_rms, 4),
                 peak_to_peak_z=mz['peak_to_peak'],
                 dominant_freq_x=mx['dominant_freq'],
+                dominant_freq_y=my['dominant_freq'],
+                dominant_freq_z=mz['dominant_freq'],
                 condition_score=reported_score
             )
             print(f"Inserted metrics for asset {asset_id} (Condition Score: {score})", flush=True)

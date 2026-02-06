@@ -1142,3 +1142,77 @@
 1770262008: Saving in-memory database to /mosquitto/data//mosquitto.db.
 1770263809: Saving in-memory database to /mosquitto/data//mosquitto.db.
 1770265610: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770267411: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770269212: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770271012: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770272813: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770274614: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770276415: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770278216: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770280017: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770281817: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770283618: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770285419: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770296342: Client auto-70C22A6A-768B-158E-25CD-B812A42FC6CC closed its connection.
+1770296344: mosquitto version 2.0.22 terminating
+1770296344: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770296657: mosquitto version 2.0.22 starting
+1770296657: Config loaded from /mosquitto/config/mosquitto.conf.
+1770296657: Opening ipv4 listen socket on port 1883.
+1770296657: Opening websockets listen socket on port 9001.
+1770296657: mosquitto version 2.0.22 running
+1770296658: New connection from 172.18.0.5:34791 on port 1883.
+1770296658: New client connected from 172.18.0.5:34791 as auto-51AA4A4A-9A87-93AB-B8B1-4EEB9BDB945D (p2, c1, k60).
+1770300069: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770301870: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770303671: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770305472: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770307273: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770309073: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770310874: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770312675: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770313955: New connection from 172.18.0.1:34272 on port 1883.
+1770313955: New client connected from 172.18.0.1:34272 as ESP32_Vibe_Sensor (p2, c1, k15).
+1770314023: Client ESP32_Vibe_Sensor has exceeded timeout, disconnecting.
+1770314172: New connection from 172.18.0.1:46694 on port 1883.
+1770314172: New client connected from 172.18.0.1:46694 as ESP32_Vibe_Sensor (p2, c1, k15).
+1770314329: Client ESP32_Vibe_Sensor has exceeded timeout, disconnecting.
+1770314476: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770314621: New connection from 172.18.0.1:43212 on port 1883.
+1770314621: New client connected from 172.18.0.1:43212 as ESP32_Vibe_Sensor (p2, c1, k15).
+1770314659: Client ESP32_Vibe_Sensor has exceeded timeout, disconnecting.
+1770314961: New connection from 172.18.0.1:33444 on port 1883.
+1770314961: New client connected from 172.18.0.1:33444 as ESP32_Vibe_Sensor (p2, c1, k15).
+1770314988: Client ESP32_Vibe_Sensor has exceeded timeout, disconnecting.
+1770315038: New connection from 172.18.0.1:59724 on port 1883.
+1770315038: New client connected from 172.18.0.1:59724 as ESP32_Vibe_Sensor (p2, c1, k15).
+1770315061: Client ESP32_Vibe_Sensor has exceeded timeout, disconnecting.
+1770315147: New connection from 172.18.0.1:36244 on port 1883.
+1770315147: New client connected from 172.18.0.1:36244 as ESP32_Vibe_Sensor (p2, c1, k15).
+1770315171: Client ESP32_Vibe_Sensor has exceeded timeout, disconnecting.
+1770341085: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770342886: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770344686: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770346487: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770348288: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770350089: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770351890: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770352366: New connection from 172.18.0.1:41398 on port 1883.
+1770352366: New client connected from 172.18.0.1:41398 as ESP32_Vibe_Sensor (p2, c1, k15).
+1770352390: Client ESP32_Vibe_Sensor has exceeded timeout, disconnecting.
+1770353690: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770355491: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770357292: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770359093: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770360894: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770362695: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770364495: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770366296: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770368097: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770369898: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770371699: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770373500: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770375301: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770376366: New connection from 172.18.0.1:59402 on port 1883.
+1770376366: New client connected from 172.18.0.1:59402 as ESP32_Vibe_Sensor (p2, c1, k15).
+1770376391: Client ESP32_Vibe_Sensor has exceeded timeout, disconnecting.

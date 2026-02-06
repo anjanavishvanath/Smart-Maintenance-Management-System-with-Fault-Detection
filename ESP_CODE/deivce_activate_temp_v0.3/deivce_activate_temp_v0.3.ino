@@ -27,7 +27,7 @@ const char* ACTIVATED = "is_activated";
 // [TODO] pull broker url, mqtt username, password, activaton url from backend and save in NVS as well
 String mqttBroker = "192.168.1.3";
 String ACTIVATION_URL = "http://" + mqttBroker + ":5000/api/devices/activate";
-String slpt = "d97759a3-23ee-436f-adfd-bdba6e59da7f";
+String slpt = "46e3fe90-6e3b-4c19-9f4a-18587f1cbb54";
 
 // --- Global Variables ---
 String deviceTopic = "";

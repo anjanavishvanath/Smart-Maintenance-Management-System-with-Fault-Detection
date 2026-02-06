@@ -77,6 +77,8 @@ CREATE TABLE asset_health_metrics (
     rms_z FLOAT,
     rms_total FLOAT,
     dom_freq_x FLOAT,
+    dom_freq_y FLOAT,
+    dom_freq_z FLOAT,
     peak_to_peak_z FLOAT,
     condition_score INT -- 0 for Healthy, 1 for Warning, 2 for Critical
 );
