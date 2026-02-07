@@ -80,7 +80,8 @@ CREATE TABLE asset_health_metrics (
     dom_freq_y FLOAT,
     dom_freq_z FLOAT,
     peak_to_peak_z FLOAT,
-    condition_score INT -- 0 for Healthy, 1 for Warning, 2 for Critical
+    condition_score INT, -- 0 for Healthy, 1 for Warning, 2 for Critical
+    diagnosis TEXT DEFAULT 'Healthy'
 );
 -- Convert to hypertable for TimescaleDB performance
 SELECT create_hypertable('asset_health_metrics', 'time');
@@ -96,6 +97,5 @@ CREATE TABLE asset_baselines (
     std_rms_z FLOAT DEFAULT 0.0,
     mean_rms_total FLOAT DEFAULT 0.0,
     std_rms_total FLOAT DEFAULT 0.0,
-    calibrated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    
+    calibrated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP    
 );

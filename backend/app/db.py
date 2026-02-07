@@ -2,6 +2,7 @@ from sqlalchemy import create_engine, text
 import os
 from processing import calculate_vibration_metrics
 import numpy as np
+from psycopg2 import extras
 
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://cm_user:cm_pass@timescaledb:5432/cm_db')
 
@@ -143,6 +144,15 @@ def get_organization_assets(organization) -> list[dict]:
         ), {"organization": organization}).mappings().all()
         return [row_to_dict(row) for row in r]
 
+def get_asset_details(asset_id) -> dict:
+    with engine.connect() as conn:
+        r = conn.execute(text(
+            "SELECT id, name, max_rpm, power, organization, created_at FROM assets WHERE id = :asset_id"
+        ), {"asset_id": asset_id}).mappings().first()
+        if r is None:
+            return {}
+        return row_to_dict(r)
+
 def link_asset_to_device(asset_id, device_mac):
     with engine.begin() as conn:
         conn.execute(text(
@@ -166,12 +176,33 @@ def insert_sensor_data(time, device_mac, asset_id, x, y, z):
             "z": z
         })
 
-def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_total, rms_z, peak_to_peak_z, dominant_freq_x, dominant_freq_y, dominant_freq_z, condition_score=0):
+def insert_sensor_data_bulk(data_list):
+    """
+    data_list: A list of tuples [(time, mac, asset_id, ax, ay, az), ...]
+    """
+    conn = engine.raw_connection()
+    try:
+        with conn.cursor() as cur:
+            # This is the magic: it builds one giant INSERT statement
+            query = """
+                INSERT INTO sensor_data (time, device_mac, asset_id, accel_x, accel_y, accel_z)
+                VALUES %s
+            """
+            extras.execute_values(cur, query, data_list)
+            conn.commit()
+    except Exception as e:
+        print(f"Bulk insert error: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
+def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_total, rms_z, peak_to_peak_z, dominant_freq_x, dominant_freq_y, dominant_freq_z, condition_score=0, diagnosis="Healthy"):
     with engine.begin() as conn:
         conn.execute(text(
             """INSERT INTO asset_health_metrics 
-               (time, asset_id, rms_x, rms_y, rms_total, rms_z, dom_freq_x, dom_freq_y, dom_freq_z, peak_to_peak_z, condition_score) 
-               VALUES (:time, :asset_id, :rms_x, :rms_y, :rms_total, :rms_z, :dominant_freq_x, :dominant_freq_y, :dominant_freq_z, :peak_to_peak_z, :condition_score)"""
+               (time, asset_id, rms_x, rms_y, rms_total, rms_z, dom_freq_x, dom_freq_y, dom_freq_z, peak_to_peak_z, condition_score, diagnosis) 
+               VALUES (:time, :asset_id, :rms_x, :rms_y, :rms_total, :rms_z, :dominant_freq_x, :dominant_freq_y, :dominant_freq_z, :peak_to_peak_z, :condition_score, :diagnosis)"""
         ), {
             "time": time,
             "asset_id": asset_id,
@@ -183,7 +214,8 @@ def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_total, rms_z, peak_t
             "dominant_freq_y": dominant_freq_y,
             "dominant_freq_z": dominant_freq_z,
             "peak_to_peak_z": peak_to_peak_z,
-            "condition_score": condition_score
+            "condition_score": condition_score,
+            "diagnosis": diagnosis
         })
 
 def get_asset_spectrum(asset_id: int, limit: int = 500):
