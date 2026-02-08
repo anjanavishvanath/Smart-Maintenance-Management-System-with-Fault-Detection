@@ -5,6 +5,7 @@ ESP32 MQTT sensor data transmission test
  - Read acc. from MPU9250 get magnitude sqrt(x^2+y^2+z^2) ?
  - Note: only add to buffer when the machine is working
 */
+
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
@@ -35,7 +36,7 @@ char mqttBuffer[8192];
 
 // ================= SAMPLE STRUCT =================
 struct SamplePacket {
-  uint32_t ts;   // window timestamp (micros)
+  uint32_t ts;  // window timestamp (micros)
   float ax;
   float ay;
   float az;
@@ -69,33 +70,47 @@ void samplingTask(void* pv) {
   uint32_t windowTs = 0;
 
   while (true) {
-    mpu9250.accelUpdate();
-    float ax = mpu9250.accelX();
-    float ay = mpu9250.accelY();
-    float az = mpu9250.accelZ();
+    int status = mpu9250.accelUpdate();
+    // 1. Check if update was successful
+    if (status == 0) {
+      float ax = mpu9250.accelX();
+      float ay = mpu9250.accelY();
+      float az = mpu9250.accelZ();
 
-    float mag = fabs(sqrt(ax*ax + ay*ay + az*az) - 1.0);
-    if (mag > maxMagInWindow) maxMagInWindow = mag;
+      // 2. Fix the magnitude logic
+      float rawMag = sqrt(ax * ax + ay * ay + az * az);
 
-    if (count == 0) {
-      windowTs = micros();   // Timestamp at first sample
+      // If the sensor returns exactly 0, it's a hardware failure
+      if (rawMag > 0.001) {
+        float mag = fabs(rawMag - 1.0);
+        if (mag > maxMagInWindow) maxMagInWindow = mag;
+
+        if (count == 0) windowTs = micros();
+        window[count] = { windowTs, ax, ay, az };
+        count++;
+      }
+    } else {
+      Serial.println("I2C Error!");
+      // Try to recover the bus
+      Wire.end();
+      vTaskDelay(pdMS_TO_TICKS(10));  // Give it a moment to breathe 
+      Wire.begin(21, 22);
+      Wire.setClock(100000);
+      vTaskDelay(pdMS_TO_TICKS(10));  // Give it a moment to breathe
+      mpu9250.beginAccel();
+      continue;                       // Skip this sample
     }
 
-    window[count] = {windowTs, ax, ay, az};
-    count++;
-
     if (count >= BATCH_SIZE) {
-      if (maxMagInWindow > VIBRATION_THRESHOLD) {
+      // Lower the threshold slightly? 0.02 is usually safe for "Healthy"
+      if (maxMagInWindow > 0.02) {
         for (int i = 0; i < BATCH_SIZE; i++) {
-          if (xQueueSend(sampleQueue, &window[i], 0) != pdTRUE) {
-            Serial.println("Queue FULL — data dropped");
-          }
+          xQueueSend(sampleQueue, &window[i], 0);
         }
       }
       count = 0;
       maxMagInWindow = 0;
     }
-
     vTaskDelayUntil(&lastWake, freq);
   }
 }
@@ -115,7 +130,7 @@ void mqttTask(void* pv) {
 
       if (sampleIndex == 0) {
         jsonDoc.clear();
-        batchTs = s.ts;        // 📌 Get window timestamp
+        batchTs = s.ts;  //Get window timestamp
         jsonDoc["ts"] = batchTs;
       }
 
@@ -146,6 +161,7 @@ void setup() {
   setupWiFi();
 
   Wire.begin(21, 22);
+  Wire.setClock(100000);
   mpu9250.setWire(&Wire);
   mpu9250.beginAccel();
 

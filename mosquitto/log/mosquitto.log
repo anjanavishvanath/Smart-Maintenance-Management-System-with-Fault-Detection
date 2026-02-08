@@ -1366,3 +1366,32 @@
 1770489357: Client auto-BF5CC32D-47B1-9910-A28F-E48AA9F88479 closed its connection.
 1770489358: mosquitto version 2.0.22 terminating
 1770489358: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770521632: mosquitto version 2.0.22 starting
+1770521632: Config loaded from /mosquitto/config/mosquitto.conf.
+1770521632: Opening ipv4 listen socket on port 1883.
+1770521632: Opening websockets listen socket on port 9001.
+1770521632: mosquitto version 2.0.22 running
+1770521634: New connection from 172.18.0.5:47247 on port 1883.
+1770521634: New client connected from 172.18.0.5:47247 as auto-FDBC5E22-0AA3-D88F-6C4A-DAD522560CFD (p2, c1, k60).
+1770521651: New connection from 172.18.0.1:33786 on port 1883.
+1770521651: New client connected from 172.18.0.1:33786 as ESP32_Vibe_Sensor (p2, c1, k60).
+1770521753: New connection from 172.18.0.1:45810 on port 1883.
+1770521753: Client ESP32_Vibe_Sensor already connected, closing old connection.
+1770521753: New client connected from 172.18.0.1:45810 as ESP32_Vibe_Sensor (p2, c1, k120).
+1770521934: Client ESP32_Vibe_Sensor has exceeded timeout, disconnecting.
+1770522798: Client auto-FDBC5E22-0AA3-D88F-6C4A-DAD522560CFD closed its connection.
+1770522799: mosquitto version 2.0.22 terminating
+1770522799: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1770522817: mosquitto version 2.0.22 starting
+1770522817: Config loaded from /mosquitto/config/mosquitto.conf.
+1770522817: Opening ipv4 listen socket on port 1883.
+1770522817: Opening websockets listen socket on port 9001.
+1770522817: mosquitto version 2.0.22 running
+1770522819: New connection from 172.18.0.5:37037 on port 1883.
+1770522819: New client connected from 172.18.0.5:37037 as auto-ADD4CA38-3D9A-5D23-C628-6B042394F432 (p2, c1, k60).
+1770522849: New connection from 172.18.0.1:48502 on port 1883.
+1770522849: New client connected from 172.18.0.1:48502 as ESP32_Vibe_Sensor (p2, c1, k120).
+1770523024: Client ESP32_Vibe_Sensor closed its connection.
+1770523188: Client auto-ADD4CA38-3D9A-5D23-C628-6B042394F432 closed its connection.
+1770523190: mosquitto version 2.0.22 terminating
+1770523190: Saving in-memory database to /mosquitto/data//mosquitto.db.

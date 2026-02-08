@@ -85,7 +85,7 @@ def on_message(client, userdata, msg):
 
                 # Reconstruct timeline: Each sample is i*5ms after the arrival of the batch
                 sample_time = arrival_time + timedelta(milliseconds=i * DT_MS)
-                bulk_data.append((sample_time, device_mac, ax, ay, az))
+                bulk_data.append((sample_time, device_mac, asset_id, ax, ay, az))
                 # Buffer for FFT/Metrics
                 if asset_id not in data_accumulators:
                     data_accumulators[asset_id] = {'x': [], 'y': [], 'z': []}
@@ -99,7 +99,7 @@ def on_message(client, userdata, msg):
             # Check Buffer Size (Tumbling Window)
             current_buffer_size = len(data_accumulators[asset_id]['x'])
             
-            if current_buffer_size >= BATCH_SIZE_THRESHOLD:
+            if current_buffer_size >= SAMPLING_RATE:
                 print(f"Buffer full ({current_buffer_size} samples). Processing metrics for Asset {asset_id}...", flush=True)
                 # Get asset info
                 asset_info = get_asset_details(asset_id)
@@ -165,7 +165,7 @@ def on_message(client, userdata, msg):
 
                 # Save Metrics
                 insert_sensor_metrics(
-                    time=event_time,
+                    time=arrival_time,
                     asset_id=asset_id,
                     rms_x=mx['rms'],
                     rms_y=my['rms'],
