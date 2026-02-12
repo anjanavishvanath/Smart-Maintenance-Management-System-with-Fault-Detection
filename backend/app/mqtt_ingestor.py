@@ -19,47 +19,67 @@ score_history = {}
 
 SAMPLING_RATE = 200 # 200Hz
 DT_MS = 1000 / SAMPLING_RATE # 5ms
+baseline_cache = {}
+
+def fetch_cached_baseline(asset_id):
+    # Check if we already have it or if it's been 5 minutes since last check
+    if asset_id not in baseline_cache:
+        print(f"Refreshing baseline cache for Asset {asset_id}")
+        baseline_cache[asset_id] = get_asset_baseline(asset_id)
+    return baseline_cache[asset_id]
 
 
 def on_connect(client, userdata, flags, rc):
     """Standard Paho v1 callback signature"""
     if rc == 0:
-        print(f"Connected to Broker! Subscribing to {MQTT_TOPIC_SUB}...", flush=True)
-        client.subscribe(MQTT_TOPIC_SUB)
+        print(f"Connected to Broker! Subscribing...", flush=True)
+        client.subscribe([(MQTT_TOPIC_SUB, 0), ("cmd/clear_cache", 0)])
     else:
         print(f"Connection failed with code {rc}", flush=True)
 
-def diagnose_fault(rpm, mx, my, mz, score, baseline):
+def diagnose_fault(asset_rpm, mx, my, mz, score, baseline):
     if score == 0:
         return "Healthy"
-
+    
     # Ensure baseline is a dict even if None was passed
     b = baseline if baseline else {}
-
-    # Calculating anchor frequencies 
-    fundamental_hz = rpm / 60 # eg: 1500RPM/60 = 25Hz
-    two_x = fundamental_hz * 2
-    # defining a tolerance cz FFT bins are not exact
-    tol = 3
-
-    # RULE: Unbalance
-    if(math.isclose(mx['dominant_freq'], fundamental_hz, abs_tol=tol) or math.isclose(my['dominant_freq'], fundamental_hz, abs_tol=tol)):
-        if mx['rms'] > 0.5 or my['rms'] > 0.5:
-            return "Potential Unbalance"
-    # RULE: Misalignment
-    if (math.isclose(mz['dominant_freq'], fundamental_hz, abs_tol=tol) or 
-        math.isclose(mz['dominant_freq'], two_x, abs_tol=tol)):
-        if mz['rms'] > 0.4:
-            return "Potential Misalignment"
-    # RULE: Electrical Fault
-    if math.isclose(mx['dominant_freq'], 50, abs_tol=1) or math.isclose(mx['dominant_freq'], 100, abs_tol=1):
-        return "Electrical/Grid Noise"
-    # FALLBACK: Mechanical Looseness
-    return "General Mechanical Looseness"
+    
+    # Fallback to RPM-based frequency if baseline freq is missing or 0
+    base_freq = b.get('mean_dom_freq_x') or (asset_rpm / 60.0)
+    if base_freq == 0: base_freq = 25.0 # Final fallback for 1500 RPM
+    
+    current_freq = mx['dominant_freq']
+    
+    # Logic: 1X Peak (Unbalance)
+    if abs(current_freq - base_freq) < 2.0:
+        return "Unbalance Detected (Strong 1X Peak)"
+    
+    # Logic: 2X Harmonic (Misalignment)
+    if abs(current_freq - (2 * base_freq)) < 2.0:
+        return "Misalignment (2X Harmonic)"
+        
+    # Logic: High frequency (Bearing Wear)
+    # Typically bearings show up in the Z-axis at high multiples
+    if mz['dominant_freq'] > (base_freq * 4):
+        return "High Frequency Anomaly (Potential Bearing Wear)"
+        
+    return "Generic Vibration Increase"
 
 def on_message(client, userdata, msg):
     # print(f"\nMESSAGE RECEIVED: {msg.topic}", flush=True)
     try:
+        if msg.topic == "cmd/clear_cache":
+            try:
+                target_id = int(msg.payload.decode())
+                if target_id in baseline_cache:
+                    del baseline_cache[target_id]
+                    print(f"CACHE: Cleared baseline for Asset {target_id}", flush=True)
+                else:
+                     print(f"CACHE: Request to clear Asset {target_id}, but not in cache.", flush=True)
+            except ValueError:
+                print(f"CACHE: Invalid payload for clear_cache: {msg.payload}", flush=True)
+            return
+
         # Use arrival time as the wall-clock anchor
         arrival_time = datetime.now(timezone.utc)
         payload = json.loads(msg.payload.decode())
@@ -75,7 +95,7 @@ def on_message(client, userdata, msg):
         if asset_id not in data_accumulators:
             data_accumulators[asset_id] = {'x': [], 'y': [], 'z': []}
 
-        baseline = get_asset_baseline(asset_id)
+        baseline = fetch_cached_baseline(asset_id)
         
         if "samples" in payload:
             raw_samples = payload["samples"]
@@ -134,25 +154,37 @@ def on_message(client, userdata, msg):
                 # Determine condition score 
                 score = 0
                 z_score = 0 
-
+                
+                # Retrieve from cache again in case it updated (though standard flow uses the one fetched at start)
+                # But fetch_cached_baseline is fast.
+                
                 if baseline and baseline.get('std_rms_total') and baseline['std_rms_total'] > 0:
-                    # Z-Score Calculation
-                    mu = baseline['mean_rms_total']
-                    sigma = max(baseline['std_rms_total'], 0.01)
-        
-                    z_score = (total_rms - mu) / sigma
+                    # RMS Z-Score (Magnitude)
+                    mu_rms = baseline['mean_rms_total']
+                    sigma_rms = max(baseline['std_rms_total'], 0.005) # Floor to avoid div by zero
+                    z_rms = (total_rms - mu_rms) / sigma_rms
 
-                    if z_score > 3:   # 99.7% deviation
-                        score = 2     # Critical
-                    elif z_score > 2: # 95% deviation
-                        score = 1     # Warning
+                    # Frequency Z-Score (Speed/Mechanical Shift)
+                    # Checking X-axis as it's usually the most stable for rotation
+                    mu_freq = baseline.get('mean_dom_freq_x', 0)
+                    sigma_freq = max(baseline.get('std_dom_freq_x', 0), 0.005) # Floor to avoid div by zero
+                    
+                    z_freq = abs(mx['dominant_freq'] - mu_freq) / sigma_freq
+                    
+                    # Combining scores: taking the worst offender
+                    max_z = max(z_rms, z_freq)
+
+                    if max_z > 5:     # Critical
+                        score = 2
+                    elif max_z > 3:   # Warning
+                        score = 1
                     else:
-                        score = 0     # Healthy
+                        score = 0
                 else:
                     # FALLBACK
-                    if total_rms > 1.2:
+                    if total_rms > 0.6:
                         score = 2
-                    elif total_rms > 0.6:
+                    elif total_rms > 0.02:
                         score = 1
                 
                 # Update Score History
@@ -165,7 +197,7 @@ def on_message(client, userdata, msg):
                 reported_score = Counter(score_history[asset_id]).most_common(1)[0][0]
 
                 # Run diagnosis
-                diagnosis = diagnose_fault(asset_rpm, mx, my, mz, reported_score)
+                diagnosis = diagnose_fault(asset_rpm, mx, my, mz, reported_score, baseline) # Pass baseline
 
                 # Save Metrics
                 insert_sensor_metrics(

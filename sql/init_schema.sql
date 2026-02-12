@@ -97,5 +97,11 @@ CREATE TABLE asset_baselines (
     std_rms_z FLOAT DEFAULT 0.0,
     mean_rms_total FLOAT DEFAULT 0.0,
     std_rms_total FLOAT DEFAULT 0.0,
+    mean_dom_freq_x FLOAT DEFAULT 0.0,
+    std_dom_freq_x FLOAT DEFAULT 0.0,
+    mean_dom_freq_y FLOAT DEFAULT 0.0,
+    std_dom_freq_y FLOAT DEFAULT 0.0,
+    mean_dom_freq_z FLOAT DEFAULT 0.0,
+    std_dom_freq_z FLOAT DEFAULT 0.0,
     calibrated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP    
 );

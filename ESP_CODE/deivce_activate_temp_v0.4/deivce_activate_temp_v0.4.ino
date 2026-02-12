@@ -26,7 +26,7 @@ const char* WIFI_SSID = "SLT_FIBRE";
 const char* WIFI_PASS = "Anji@123";
 String mqttBroker = "192.168.1.3";
 String ACTIVATION_URL = "http://" + mqttBroker + ":5000/api/devices/activate";
-String slpt = "b005702e-56ab-4427-b34f-8438d95e7d14";
+String slpt = "1adbda1d-d5c0-4ea2-ac87-633865a02c40";
 // [TODO] pull broker url, mqtt username, password, activaton url from backend and save in NVS as well
 const char* NVS_NAMESPACE = "device_config";
 const char* ACTIVATED = "is_activated";

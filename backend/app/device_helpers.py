@@ -88,4 +88,17 @@ def set_asset_baseline(asset_id: int):
     result = calculate_and_set_baseline(asset_id)
     if "error" in result:
         return jsonify(result), 400
+    
+    # Notify MQTT Ingestor to clear cache
+    try:
+        broker = os.getenv("MQTT_BROKER", "mqtt_broker")
+        # Use single-shot publish. 
+        # Note: If broker is not reachable, this might throw or block. 
+        # Using a short timeout if possible would be good, but publish.single doesn't expose it easily in v1. 
+        # We'll wrap in try-except.
+        print(f"Publishing clear_cache for asset {asset_id} to {broker}")
+        publish.single("cmd/clear_cache", payload=str(asset_id), hostname=broker, port=1883)
+    except Exception as e:
+        print(f"Warning: Failed to invalidate MQTT cache: {e}")
+
     return jsonify(result), 200

@@ -282,13 +282,11 @@ def get_asset_health(asset_id: int, limit: int = 50):
     return {"history": history}
 
 
-import numpy as np
-from sqlalchemy import text
 
 def calculate_and_set_baseline(asset_id: int):
     # Fetch total along with individual axes
     query = text("""
-        SELECT rms_x, rms_y, rms_z, rms_total 
+        SELECT rms_x, rms_y, rms_z, rms_total, dom_freq_x, dom_freq_y, dom_freq_z
         FROM asset_health_metrics 
         WHERE asset_id = :asset_id AND condition_score = 0
         ORDER BY time DESC LIMIT 100
@@ -307,14 +305,26 @@ def calculate_and_set_baseline(asset_id: int):
         upsert_query = text("""
             INSERT INTO asset_baselines 
                 (asset_id, mean_rms_x, std_rms_x, mean_rms_y, std_rms_y, 
-                 mean_rms_z, std_rms_z, mean_rms_total, std_rms_total, calibrated_at)
+                 mean_rms_z, std_rms_z, mean_rms_total, std_rms_total,
+                 mean_dom_freq_x, std_dom_freq_x, mean_dom_freq_y, std_dom_freq_y,
+                 mean_dom_freq_z, std_dom_freq_z, calibrated_at)
             VALUES 
-                (:id, :mx, :sx, :my, :sy, :mz, :sz, :mt, :st, CURRENT_TIMESTAMP)
+                (:id, :mx, :sx, :my, :sy, :mz, :sz, :mt, :st, 
+                 :mdfx, :sdfx, :mdfy, :sdfy, :mdfz, :sdfz, CURRENT_TIMESTAMP)
             ON CONFLICT (asset_id) DO UPDATE SET
                 mean_rms_total = EXCLUDED.mean_rms_total,
                 std_rms_total = EXCLUDED.std_rms_total,
+                mean_dom_freq_x = EXCLUDED.mean_dom_freq_x,
+                std_dom_freq_x = EXCLUDED.std_dom_freq_x,
+                mean_dom_freq_y = EXCLUDED.mean_dom_freq_y,
+                std_dom_freq_y = EXCLUDED.std_dom_freq_y,
+                mean_dom_freq_z = EXCLUDED.mean_dom_freq_z,
+                std_dom_freq_z = EXCLUDED.std_dom_freq_z,
                 calibrated_at = EXCLUDED.calibrated_at
         """)
+        
+        # means/stds indices:
+        # 0: rms_x, 1: rms_y, 2: rms_z, 3: rms_total, 4: dom_freq_x, 5: dom_freq_y, 6: dom_freq_z
         
         conn.execute(upsert_query, {
             "id": asset_id,
