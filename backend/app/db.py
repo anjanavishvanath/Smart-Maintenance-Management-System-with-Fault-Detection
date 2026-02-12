@@ -321,9 +321,14 @@ def calculate_and_set_baseline(asset_id: int):
             "mx": float(means[0]), "sx": float(stds[0]),
             "my": float(means[1]), "sy": float(stds[1]),
             "mz": float(means[2]), "sz": float(stds[2]),
-            "mt": float(means[3]), "st": float(stds[3]) # THE NEW TOTALS
+            "mt": float(means[3]), "st": float(stds[3]),
+            "mdfx": float(means[4]), "sdfx": float(stds[4]),
+            "mdfy": float(means[5]), "sdfy": float(stds[5]),
+            "mdfz": float(means[6]), "sdfz": float(stds[6])
         })
         conn.commit()
+    
+    return {"msg": "Baseline calculated and set successfully."}
 
 def get_asset_baseline(asset_id: int):
     query = text("SELECT * FROM asset_baselines WHERE asset_id = :asset_id")

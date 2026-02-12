@@ -29,9 +29,13 @@ def on_connect(client, userdata, flags, rc):
     else:
         print(f"Connection failed with code {rc}", flush=True)
 
-def diagnose_fault(rpm, mx, my, mz, score):
+def diagnose_fault(rpm, mx, my, mz, score, baseline):
     if score == 0:
         return "Healthy"
+
+    # Ensure baseline is a dict even if None was passed
+    b = baseline if baseline else {}
+
     # Calculating anchor frequencies 
     fundamental_hz = rpm / 60 # eg: 1500RPM/60 = 25Hz
     two_x = fundamental_hz * 2

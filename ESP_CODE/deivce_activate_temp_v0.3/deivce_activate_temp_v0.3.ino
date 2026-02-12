@@ -13,175 +13,69 @@ ESP32 MQTT sensor data transmission test
 #include <MPU9250_asukiaaa.h>
 #include <PubSubClient.h>
 
-// ================= GLOBAL OBJECTS =================
 Preferences preferences;
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 MPU9250_asukiaaa mpu9250;
-
-QueueHandle_t sampleQueue;
-
-// ================= CONFIG =================
+// [TODO] hardcoding for now. Should pull from a from through AP mode
 const char* WIFI_SSID = "SLT_FIBRE";
 const char* WIFI_PASS = "Anji@123";
+
+// --- NVS Keys ---
+const char* NVS_NAMESPACE = "device_config";
+const char* ACTIVATED = "is_activated";
+// [TODO] pull broker url, mqtt username, password, activaton url from backend and save in NVS as well
 String mqttBroker = "192.168.1.3";
+String ACTIVATION_URL = "http://" + mqttBroker + ":5000/api/devices/activate";
+String slpt = "d97759a3-23ee-436f-adfd-bdba6e59da7f";
+
+// --- Global Variables ---
 String deviceTopic = "";
-
+unsigned long lastSampleTime = 0;
+const unsigned long interval = 5; // to control sample frequency (200Hz)
+long lastMsg = 0;
 const float VIBRATION_THRESHOLD = 0.05;
-const int BATCH_SIZE = 80;
+const int BATCH_SIZE = 20;
+StaticJsonDocument<4096> jsonDoc;
+char mqttBuffer[4096];
+int sampleIndex = 0;
 
-// JSON buffers
-StaticJsonDocument<8192> jsonDoc;
-char mqttBuffer[8192];
-
-// ================= SAMPLE STRUCT =================
-struct SamplePacket {
-  uint32_t ts;  // window timestamp (micros)
-  float ax;
-  float ay;
-  float az;
-};
-
-
-// ================= WIFI =================
-void setupWiFi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED) delay(500);
-}
-
-// ================= MQTT =================
-void reconnect() {
-  while (!mqttClient.connected()) {
-    mqttClient.connect("ESP32_Vibe_Sensor");
-    delay(1000);
-  }
-}
-
-// ================= SAMPLING TASK (CORE 1) =================
-
-void samplingTask(void* pv) {
-  const TickType_t freq = pdMS_TO_TICKS(5);
-  TickType_t lastWake = xTaskGetTickCount();
-
-  SamplePacket window[BATCH_SIZE];
-  int count = 0;
-  float maxMagInWindow = 0;
-  uint32_t windowTs = 0;
-
-  while (true) {
-    int status = mpu9250.accelUpdate();
-    // 1. Check if update was successful
-    if (status == 0) {
-      float ax = mpu9250.accelX();
-      float ay = mpu9250.accelY();
-      float az = mpu9250.accelZ();
-
-      // 2. Fix the magnitude logic
-      float rawMag = sqrt(ax * ax + ay * ay + az * az);
-
-      // If the sensor returns exactly 0, it's a hardware failure
-      if (rawMag > 0.001) {
-        float mag = fabs(rawMag - 1.0);
-        if (mag > maxMagInWindow) maxMagInWindow = mag;
-
-        if (count == 0) windowTs = micros();
-        window[count] = { windowTs, ax, ay, az };
-        count++;
-      }
-    } else {
-      Serial.println("I2C Error!");
-      // Try to recover the bus
-      Wire.end();
-      vTaskDelay(pdMS_TO_TICKS(10));  // Give it a moment to breathe 
-      Wire.begin(21, 22);
-      Wire.setClock(100000);
-      vTaskDelay(pdMS_TO_TICKS(10));  // Give it a moment to breathe
-      mpu9250.beginAccel();
-      continue;                       // Skip this sample
-    }
-
-    if (count >= BATCH_SIZE) {
-      // Lower the threshold slightly? 0.02 is usually safe for "Healthy"
-      if (maxMagInWindow > 0.02) {
-        for (int i = 0; i < BATCH_SIZE; i++) {
-          xQueueSend(sampleQueue, &window[i], 0);
-        }
-      }
-      count = 0;
-      maxMagInWindow = 0;
-    }
-    vTaskDelayUntil(&lastWake, freq);
-  }
-}
-
-// ================= MQTT TASK (CORE 0) =================
-void mqttTask(void* pv) {
-  SamplePacket s;
-  int sampleIndex = 0;
-  uint32_t batchTs = 0;
-
-  while (true) {
-
-    if (!mqttClient.connected()) reconnect();
-    mqttClient.loop();
-
-    if (xQueueReceive(sampleQueue, &s, pdMS_TO_TICKS(10))) {
-
-      if (sampleIndex == 0) {
-        jsonDoc.clear();
-        batchTs = s.ts;  //Get window timestamp
-        jsonDoc["ts"] = batchTs;
-      }
-
-      JsonArray samples = jsonDoc["samples"];
-      if (samples.isNull()) samples = jsonDoc.createNestedArray("samples");
-
-      JsonObject obj = samples.createNestedObject();
-      obj["ax"] = s.ax;
-      obj["ay"] = s.ay;
-      obj["az"] = s.az;
-
-      sampleIndex++;
-
-      if (sampleIndex >= BATCH_SIZE) {
-        serializeJson(jsonDoc, mqttBuffer);
-        if (!mqttClient.publish(deviceTopic.c_str(), mqttBuffer)) {
-          Serial.println("MQTT publish failed");
-        }
-        sampleIndex = 0;
-      }
-    }
-  }
-}
-
-// ================= SETUP =================
 void setup() {
   Serial.begin(115200);
+  delay(1000);
+
+  // [TODO] Start as an AP and get wifi cred
   setupWiFi();
 
-  Wire.begin(21, 22);
-  Wire.setClock(100000);
-  mpu9250.setWire(&Wire);
-  mpu9250.beginAccel();
+  // --- LOAD NVS Values ---
+  if (preferences.begin(NVS_NAMESPACE, false)) {  // open in read/write mode. Will create namespace if not available
+    bool isActivated = preferences.getBool(ACTIVATED, false);
+    preferences.end();
 
-  mqttClient.setServer(mqttBroker.c_str(), 1883);
-  mqttClient.setKeepAlive(120);
-  mqttClient.setBufferSize(8192);
+    Serial.println("Device Status: " + String(isActivated));
 
-  deviceTopic = "presense/Divor/1/" + WiFi.macAddress() + "/telemetry";
-
-  sampleQueue = xQueueCreate(400, sizeof(SamplePacket));
-
-  xTaskCreatePinnedToCore(
-    samplingTask, "Sampling Task",
-    4096, NULL, 2, NULL, 1);  // Core 1
-
-  xTaskCreatePinnedToCore(
-    mqttTask, "MQTT Task",
-    8192, NULL, 1, NULL, 0);  // Core 0
+    if (!isActivated) {
+      Serial.println("Not Activated. Trying to activate with SLPT");
+      activateDevice();
+      ESP.restart();
+    } else {
+      Serial.println("Activated. Ready to send data");
+      // --- Sensor init ---
+      Wire.begin(21, 22);
+      mpu9250.setWire(&Wire);
+      mpu9250.beginAccel();
+      // --- MQTT init ---
+      mqttClient.setServer(mqttBroker.c_str(), 1883);
+      mqttClient.setBufferSize(2048);
+      deviceTopic = "presense/Divor/1/" + WiFi.macAddress() + "/telemetry";
+    }
+  } else {
+    Serial.println("Critical Error: NVS Namespace failed to open.");
+  }
 }
 
 void loop() {
-  // RTOS handles everything
+  if (!mqttClient.connected()) reconnect();
+  mqttClient.loop();
+  batchAndSendData();
 }
