@@ -6,7 +6,7 @@ from http_helpers import signup, login, refresh, logout
 from flask_jwt_extended import JWTManager, jwt_required
 from device_helpers import provision_device, activate_device, link_sensor_to_asset, get_devices_for_user, set_asset_baseline 
 from asset_helpers import add_asset_to_db, get_assets_by_organization
-from db import get_asset_spectrum, get_asset_health, get_asset_baseline
+from db import get_asset_spectrum, get_asset_health, get_asset_baseline, get_recent_alerts
 
 load_dotenv()
 app = Flask(__name__) 
@@ -86,6 +86,14 @@ def handle_asset_baseline(asset_id: int):
     if not baseline:
         return jsonify({"error": "No baseline found"}), 404
     return jsonify(baseline), 200
+
+# --- EVENT MANAGEMENT ROUTES ---
+@app.route('/api/alerts/recent', methods=['GET'])
+@jwt_required()
+def get_recent_alerts_route():
+    alerts = get_recent_alerts()
+    return jsonify(alerts), 200
+    
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000) # Start Flask (dev). In production, use WSGI server and run mqtt client separately.

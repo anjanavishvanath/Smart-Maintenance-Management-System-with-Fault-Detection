@@ -5,6 +5,7 @@ import paho.mqtt.client as mqtt
 from collections import Counter
 from datetime import datetime, timezone, timedelta
 from db import insert_sensor_data, insert_sensor_metrics, get_asset_baseline, insert_sensor_data_bulk, get_asset_details
+from db import get_active_event, create_event, close_event
 from processing import calculate_vibration_metrics
 
 # --- CONFIG ---
@@ -154,6 +155,7 @@ def on_message(client, userdata, msg):
                 # Determine condition score 
                 score = 0
                 z_score = 0 
+                max_z = 0.0 # Initialize to avoid UnboundLocalError
                 
                 # Retrieve from cache again in case it updated (though standard flow uses the one fetched at start)
                 # But fetch_cached_baseline is fast.
@@ -198,6 +200,24 @@ def on_message(client, userdata, msg):
 
                 # Run diagnosis
                 diagnosis = diagnose_fault(asset_rpm, mx, my, mz, reported_score, baseline) # Pass baseline
+
+                # --- Logic to Manage Asset Events ---
+                active_event = get_active_event(asset_id)
+                if reported_score > 0:
+                    if not active_event:
+                        # CASE: No active event, but machine is now unhealthy -> OPEN NEW EVENT
+                        print(f"EVENT: Opening new alert for Asset {asset_id} (Severity: {reported_score})")
+                        create_event(asset_id, reported_score, diagnosis, max_z)
+                    elif active_event.severity != reported_score:
+                        # CASE: Severity changed (e.g., Warning -> Critical) -> CLOSE OLD, OPEN NEW
+                        close_event(active_event.id)
+                        create_event(asset_id, reported_score, diagnosis, max_z)
+                else:
+                    if active_event:
+                        # CASE: Machine returned to healthy state -> CLOSE EVENT
+                        print(f"EVENT: Resolving alert for Asset {asset_id}. Machine is Healthy.")
+                        close_event(active_event.id)
+
 
                 # Save Metrics
                 insert_sensor_metrics(

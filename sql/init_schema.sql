@@ -105,3 +105,13 @@ CREATE TABLE asset_baselines (
     std_dom_freq_z FLOAT DEFAULT 0.0,
     calibrated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP    
 );
+
+CREATE TABLE asset_events (
+    id SERIAL PRIMARY KEY,
+    asset_id INTEGER REFERENCES assets(id),
+    start_time TIMESTAMP WITH TIME ZONE,
+    end_time TIMESTAMP WITH TIME ZONE, -- NULL if currently active
+    severity INTEGER, -- 1 for Warning, 2 for Critical
+    initial_diagnosis TEXT,
+    max_z_score FLOAT
+);

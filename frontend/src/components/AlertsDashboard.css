@@ -1,0 +1,141 @@
+
+.alerts-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    padding: 1rem;
+    background-color: #1a1a1a;
+    border-radius: 8px;
+    color: #e0e0e0;
+}
+
+.alerts-section h3 {
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #333;
+    padding-bottom: 0.5rem;
+}
+
+/* --- Active Cards --- */
+.active-cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.all-good {
+    color: #4caf50;
+    font-style: italic;
+}
+
+.alert-card {
+    background: #2a2a2a;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Pulsing effect for active alerts */
+@keyframes pulse-red {
+    0% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(244, 67, 54, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
+}
+
+@keyframes pulse-orange {
+    0% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(255, 152, 0, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
+}
+
+.alert-card.severity-2 {
+    border-left: 5px solid #f44336;
+    animation: pulse-red 2s infinite;
+}
+
+.alert-card.severity-1 {
+    border-left: 5px solid #ff9800;
+    animation: pulse-orange 2s infinite;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.asset-name {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.severity-2 .badge {
+    background-color: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+    border: 1px solid #f44336;
+}
+
+.severity-1 .badge {
+    background-color: rgba(255, 152, 0, 0.2);
+    color: #ff9800;
+    border: 1px solid #ff9800;
+}
+
+.card-body p {
+    margin: 0.25rem 0;
+    font-size: 0.9rem;
+    color: #ccc;
+}
+
+.diagnosis {
+    color: #fff !important;
+    font-weight: 500;
+}
+
+/* --- History Table --- */
+.alerts-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.alerts-table th, .alerts-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #333;
+}
+
+.alerts-table th {
+    background-color: #252525;
+    color: #aaa;
+}
+
+.alerts-table tr:hover {
+    background-color: #2a2a2a;
+}
+
+.badge-sm {
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+}
+
+.badge-sm.severity-2 {
+    background: #f44336;
+    color: white;
+}
+
+.badge-sm.severity-1 {
+    background: #ff9800;
+    color: white;
+}

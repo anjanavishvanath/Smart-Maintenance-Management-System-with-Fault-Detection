@@ -1610,3 +1610,8 @@
 1770922920: Opening ipv4 listen socket on port 1883.
 1770922920: Opening websockets listen socket on port 9001.
 1770922920: mosquitto version 2.0.22 running
+1770922921: New connection from 172.18.0.5:36861 on port 1883.
+1770922921: New client connected from 172.18.0.5:36861 as auto-33ADFB72-DA5D-40FF-3CA0-8FC89573F57C (p2, c1, k60).
+1770922983: New connection from 172.18.0.1:52954 on port 1883.
+1770922983: New client connected from 172.18.0.1:52954 as ESP32_Vibe_Sensor (p2, c1, k120).
+1770923193: Client ESP32_Vibe_Sensor closed its connection.

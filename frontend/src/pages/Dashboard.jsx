@@ -1,12 +1,17 @@
 import { useAuth } from "../auth/AuthProvider";
 import { Link } from "react-router-dom";
+import AlertsDashboard from "../components/AlertsDashboard";
 
 export default function Dashboard() {
-    const { user } = useAuth();
+    const { user, token } = useAuth();
     return (
         <div>
             <h1>Dashboard</h1>
             <p className="text-muted">Welcome back, <span className="text-highlight">{user.username}</span> from {user.organization}</p>
+
+            <div style={{ marginBottom: '2rem' }}>
+                <AlertsDashboard token={token} />
+            </div>
 
             <div className="grid-view">
                 <div className="card">

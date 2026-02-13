@@ -349,3 +349,40 @@ def get_asset_baseline(asset_id: int):
         # Convert row to dict (handle SQLAlchemy Row object)
         return dict(row._mapping)
     
+# --- Event related DB operations ---
+def get_active_event(asset_id: int):
+    query = text("""
+        SELECT id, severity FROM asset_events 
+        WHERE asset_id = :asset_id AND end_time IS NULL
+        LIMIT 1
+    """)
+    with engine.connect() as conn:
+        return conn.execute(query, {"asset_id": asset_id}).fetchone()
+
+def create_event(asset_id, severity, diagnosis, z_score):
+    query = text("""
+        INSERT INTO asset_events (asset_id, start_time, severity, initial_diagnosis, max_z_score)
+        VALUES (:id, CURRENT_TIMESTAMP, :sev, :diag, :z)
+    """)
+    with engine.connect() as conn:
+        conn.execute(query, {"id": asset_id, "sev": severity, "diag": diagnosis, "z": z_score})
+        conn.commit()
+
+def close_event(event_id):
+    query = text("UPDATE asset_events SET end_time = CURRENT_TIMESTAMP WHERE id = :id")
+    with engine.connect() as conn:
+        conn.execute(query, {"id": event_id})
+        conn.commit()
+
+def get_recent_alerts():
+    query = text("""
+        SELECT e.*, a.name as asset_name 
+        FROM asset_events e
+        JOIN assets a ON e.asset_id = a.id
+        ORDER BY e.start_time DESC
+        LIMIT 20
+    """)
+    with engine.connect() as conn:
+        result = conn.execute(query).fetchall()
+        # Return list of dicts. The route handler in main.py will json-enocde it.
+        return [dict(row._mapping) for row in result]
