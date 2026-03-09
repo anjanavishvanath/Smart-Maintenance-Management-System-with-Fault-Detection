@@ -376,7 +376,8 @@ def close_event(event_id):
 
 def get_recent_alerts():
     query = text("""
-        SELECT e.*, a.name as asset_name 
+        SELECT e.id, e.asset_id, e.start_time, e.end_time, e.severity, 
+               e.initial_diagnosis, e.max_z_score, a.name as asset_name 
         FROM asset_events e
         JOIN assets a ON e.asset_id = a.id
         ORDER BY e.start_time DESC
@@ -386,3 +387,91 @@ def get_recent_alerts():
         result = conn.execute(query).fetchall()
         # Return list of dicts. The route handler in main.py will json-enocde it.
         return [dict(row._mapping) for row in result]
+
+# --- Maintenance related DB operations ---
+def create_ticket(asset_id, event_id, created_by, assigned_to, title, description, priority, due_date, status):
+    query = text("""
+        INSERT INTO maintenance_tickets (asset_id, event_id, created_by, assigned_to, title, description, priority, due_date, status)
+        VALUES (:asset_id, :event_id, :created_by, :assigned_to, :title, :description, :priority, :due_date, :status)
+    """)
+    with engine.connect() as conn:
+        conn.execute(query, {
+            "asset_id": asset_id,
+            "event_id": event_id,
+            "created_by": created_by,
+            "assigned_to": assigned_to,
+            "title": title,
+            "description": description,
+            "status": status,
+            "priority": priority,
+            "due_date": due_date
+        })
+        conn.commit()
+
+def get_tickets_by_org(organization: str):
+    query = text("""
+        SELECT mt.*, a.name as asset_name, u.username as assigned_to_name
+        FROM maintenance_tickets mt
+        JOIN assets a ON mt.asset_id = a.id
+        LEFT JOIN users u ON mt.assigned_to = u.id
+        WHERE a.organization = :organization
+        ORDER BY mt.created_at DESC
+    """)
+    with engine.connect() as conn:
+        result = conn.execute(query, {"organization": organization}).fetchall()
+        return [dict(row._mapping) for row in result]
+
+def get_assignable_users(organization: str, role: str):
+    """
+    Managers can assign to Engineers and Technicians.
+    Engineers can assign to Technicians.
+    """
+    if role == 'manager':
+        valid_roles = ['engineer', 'technician']
+    elif role == 'engineer':
+        valid_roles = ['technician']
+    else:
+        return []
+
+    # Requires tuple conversion for IN clause with multiple parameters safely, or using string binding.
+    # The safest is ANY(:roles) in PG.
+    query = text("""
+        SELECT id, username, email, role 
+        FROM users 
+        WHERE organization = :organization AND role = ANY(:roles)
+    """)
+    with engine.connect() as conn:
+        result = conn.execute(query, {"organization": organization, "roles": valid_roles}).fetchall()
+        return [dict(row._mapping) for row in result]
+
+def delete_ticket(ticket_id: int, user_id: int):
+    """
+    Deletes the ticket matching both ticket_id and user_id (the creator).
+    Returns True if a row was actually deleted, False otherwise.
+    """
+    query = text("DELETE FROM maintenance_tickets WHERE id = :ticket_id AND created_by = :user_id")
+    with engine.begin() as conn:
+        result = conn.execute(query, {"ticket_id": ticket_id, "user_id": user_id})
+        return result.rowcount > 0
+
+def update_ticket_status(ticket_id: int, status: str, user_id: int):
+    """
+    Updates ticket status. 
+    If status is 'resolved', we record the resolved_at timestamp.
+    """
+    if status == 'resolved':
+        query = text("""
+            UPDATE maintenance_tickets 
+            SET status = :status, resolved_at = now(), updated_at = now() 
+            WHERE id = :ticket_id
+        """)
+    else:
+        query = text("""
+            UPDATE maintenance_tickets 
+            SET status = :status, updated_at = now() 
+            WHERE id = :ticket_id
+        """)
+        
+    with engine.begin() as conn:
+        result = conn.execute(query, {"status": status, "ticket_id": ticket_id})
+        return result.rowcount > 0

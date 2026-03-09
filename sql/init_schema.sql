@@ -108,10 +108,42 @@ CREATE TABLE asset_baselines (
 
 CREATE TABLE asset_events (
     id SERIAL PRIMARY KEY,
-    asset_id INTEGER REFERENCES assets(id),
-    start_time TIMESTAMP WITH TIME ZONE,
+    asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
+    start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     end_time TIMESTAMP WITH TIME ZONE, -- NULL if currently active
     severity INTEGER, -- 1 for Warning, 2 for Critical
     initial_diagnosis TEXT,
     max_z_score FLOAT
 );
+
+CREATE INDEX idx_asset_events_active ON asset_events (asset_id) WHERE end_time IS NULL;
+
+-- Statuses: 'open', 'in_progress', 'resolved', 'closed'
+-- Priorities: 1 (Low) to 4 (Urgent)
+CREATE TABLE IF NOT EXISTS maintenance_tickets (
+    id SERIAL PRIMARY KEY,
+    asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    event_id INTEGER REFERENCES asset_events(id) ON DELETE SET NULL, -- Optional link to an anomaly
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    assigned_to INTEGER REFERENCES users(id), -- The technician/engineer assigned
+    title TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    priority INTEGER DEFAULT 1,
+    due_date TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- For tracking communication or updates on a specific ticket
+CREATE TABLE IF NOT EXISTS ticket_logs (
+    id SERIAL PRIMARY KEY,
+    ticket_id INTEGER NOT NULL REFERENCES maintenance_tickets(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    log_text TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_tickets_asset ON maintenance_tickets(asset_id);
+CREATE INDEX idx_tickets_status ON maintenance_tickets(status);

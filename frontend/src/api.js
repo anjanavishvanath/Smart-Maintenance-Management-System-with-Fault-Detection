@@ -1,8 +1,10 @@
 import axios from 'axios';
 import tokenService from './utils/tokenHelpers';
 
+export const API_BASE_url = "http://localhost:5000";
+
 const api = axios.create({
-    baseURL: "http://localhost:5000/api",
+    baseURL: `${API_BASE_url}/api`,
     timeout: 10000
 })
 

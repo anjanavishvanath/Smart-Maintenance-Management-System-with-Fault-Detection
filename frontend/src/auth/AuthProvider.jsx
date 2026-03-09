@@ -4,7 +4,7 @@ import tokenService from '../utils/tokenHelpers';
 
 export const AuthContext = createContext(null);
 
-export const AuthProvider = ({children}) => {
+export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -22,25 +22,37 @@ export const AuthProvider = ({children}) => {
         const accessToken = tokenService.getAccess();
         if (accessToken) {
             const payload = parseJwt(accessToken); //get user info
-            console.log(`payload: ${payload}`);
-            if (payload) setUser({email: payload.email, username:payload.username, role: payload.role, organization: payload.organization, });
+            console.log(`payload:`, payload);
+            if (payload) setUser({
+                id: parseInt(payload.sub),
+                email: payload.email,
+                username: payload.username,
+                role: payload.role,
+                organization: payload.organization
+            });
         }
         setLoading(false);
     }, []);
 
     // signup function
-    async function signup(username, email, password, role="technician", organization=null){
-        await api.post('/auth/signup', {username, email, password, role, organization});
+    async function signup(username, email, password, role = "technician", organization = null) {
+        await api.post('/auth/signup', { username, email, password, role, organization });
     }
 
     async function login(email, password) {
-        const res = await api.post('/auth/login', {email, password});
+        const res = await api.post('/auth/login', { email, password });
         tokenService.setTokens({
             access_token: res.data.access_token,
             refresh_token: res.data.refresh_token
         });
         const payload = parseJwt(res.data.access_token);
-        setUser({email: payload.email, username:payload.username, role: payload.role, organization: payload.organization, });
+        setUser({
+            id: parseInt(payload.sub),
+            email: payload.email,
+            username: payload.username,
+            role: payload.role,
+            organization: payload.organization
+        });
         return res.data;
     }
 
@@ -50,7 +62,7 @@ export const AuthProvider = ({children}) => {
     }
 
     return (
-        <AuthContext.Provider value={{user, loading, signup, login, logout}}>
+        <AuthContext.Provider value={{ user, loading, signup, login, logout }}>
             {children}
         </AuthContext.Provider>
     )

@@ -1,28 +1,25 @@
 
 import React, { useEffect, useState } from 'react';
-import { API_BASE_url } from '../api';
-import './AlertsDashboard.css'; // We will create this next
+import api from '../api';
+import './AlertsDashboard.css';
+import CreateTicketModal from './CreateTicketModal';
 
-export default function AlertsDashboard({ token }) {
+export default function AlertsDashboard() {
     const [alerts, setAlerts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedAlert, setSelectedAlert] = useState(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     useEffect(() => {
-        if (!token) return;
         fetchAlerts();
         const interval = setInterval(fetchAlerts, 10000); // 10s poll
         return () => clearInterval(interval);
-    }, [token]);
+    }, []);
 
     const fetchAlerts = async () => {
         try {
-            const res = await fetch(`${API_BASE_url}/api/alerts/recent`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setAlerts(data);
-            }
+            const res = await api.get('/alerts/recent');
+            setAlerts(res.data);
         } catch (err) {
             console.error("Failed to fetch alerts:", err);
         } finally {
@@ -63,6 +60,17 @@ export default function AlertsDashboard({ token }) {
                                 <p className="diagnosis">{alert.initial_diagnosis}</p>
                                 <p className="duration">Active for: {getDuration(alert.start_time, null)}</p>
                                 <p className="z-score">Max Z-Score: {alert.max_z_score?.toFixed(1)}</p>
+                                <div style={{ marginTop: '1rem' }}>
+                                    <button
+                                        className="btn btn-primary btn-sm"
+                                        onClick={() => {
+                                            setSelectedAlert(alert);
+                                            setIsModalOpen(true);
+                                        }}
+                                    >
+                                        Raise Ticket
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ))}
@@ -99,6 +107,25 @@ export default function AlertsDashboard({ token }) {
                     </tbody>
                 </table>
             </div>
+
+            {isModalOpen && selectedAlert && (
+                <CreateTicketModal
+                    onClose={() => {
+                        setIsModalOpen(false);
+                        setSelectedAlert(null);
+                    }}
+                    onSuccess={() => {
+                        setIsModalOpen(false);
+                        setSelectedAlert(null);
+                        alert("Ticket created successfully!");
+                    }}
+                    initialData={{
+                        asset_id: selectedAlert.asset_id,
+                        event_id: selectedAlert.id,
+                        title: selectedAlert.initial_diagnosis
+                    }}
+                />
+            )}
         </div>
     );
 }

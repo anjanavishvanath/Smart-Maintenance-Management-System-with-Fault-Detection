@@ -7,6 +7,7 @@ from flask_jwt_extended import JWTManager, jwt_required
 from device_helpers import provision_device, activate_device, link_sensor_to_asset, get_devices_for_user, set_asset_baseline 
 from asset_helpers import add_asset_to_db, get_assets_by_organization
 from db import get_asset_spectrum, get_asset_health, get_asset_baseline, get_recent_alerts
+from tickets_routes import create_ticket, get_org_tickets, get_assignable_users_route, delete_ticket_route, update_ticket_status_route
 
 load_dotenv()
 app = Flask(__name__) 
@@ -14,7 +15,7 @@ app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "my-secret-key")
 app.config["JWT_ALGORITHM"] = "HS256"
 jwt = JWTManager(app)
 
-CORS(app, resources={r"/api/*": {"origins": ["http://localhost:5173"]}})
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # --- AUTHENTICATION ROUTES ---
 @app.route("/api/auth/signup", methods=["POST"])
@@ -93,7 +94,33 @@ def handle_asset_baseline(asset_id: int):
 def get_recent_alerts_route():
     alerts = get_recent_alerts()
     return jsonify(alerts), 200
-    
+
+# --- MAINTENANCE ROUTES ---
+@app.route('/api/tickets/create', methods=["POST"])
+@jwt_required()
+def create_ticket_route():
+    return create_ticket()
+
+@app.route('/api/tickets/by_org', methods=["GET"])
+@jwt_required()
+def get_org_tickets_route():
+    return get_org_tickets()
+
+@app.route('/api/tickets/<int:ticket_id>', methods=["DELETE"])
+@jwt_required()
+def api_delete_ticket(ticket_id: int):
+    return delete_ticket_route(ticket_id)
+
+@app.route('/api/tickets/<int:ticket_id>/status', methods=["PATCH"])
+@jwt_required()
+def api_update_ticket_status(ticket_id: int):
+    return update_ticket_status_route(ticket_id)
+
+@app.route('/api/users/assignable', methods=["GET"])
+@jwt_required()
+def api_get_assignable_users():
+    return get_assignable_users_route()
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000) # Start Flask (dev). In production, use WSGI server and run mqtt client separately.

@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import DeviceProvisioning from "./components/DeviceProvisioning";
 import AssetPage from "./pages/AssetsPage";
 import SensorsPage from "./pages/SensorsPage";
+import MaintenancePage from "./pages/MaintenancePage";
 
 createRoot(document.getElementById("root")).render(
     <AuthProvider>
@@ -21,8 +22,9 @@ createRoot(document.getElementById("root")).render(
                     <Route path='/login' element={<Login />} />
                     <Route element={<ProtectedRoute />}>
                         <Route path='dashboard' element={<Dashboard />} />
-                        <Route path='asset_registry' element={<AssetPage/>}/>
-                        <Route path='sensor_registry' element={<SensorsPage/>}/>
+                        <Route path='asset_registry' element={<AssetPage />} />
+                        <Route path='sensor_registry' element={<SensorsPage />} />
+                        <Route path='maintenance_registry' element={<MaintenancePage />} />
                     </Route>
                 </Route>
             </Routes>
