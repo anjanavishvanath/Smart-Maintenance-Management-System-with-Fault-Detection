@@ -10,6 +10,7 @@ ESP_CODE/old
 vibration_sensor
 node_modules/
 mosquitto/log/mosquitto.log
+mosquitto/data/mosquitto.db
 CLAUDE.md
 Final_23550767.pdf
 IMPROVEMENTS.md
