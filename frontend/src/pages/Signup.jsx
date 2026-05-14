@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
+import { validatePasswordStrength, PASSWORD_HINT } from "../utils/passwordPolicy";
 import logo from "../assets/logo.svg"
 import bg from "../assets/bg.jpg"
 
@@ -12,6 +13,7 @@ export default function Signup() {
     const [role, setRole] = useState('technician');
     const [organization, setOrganization] = useState('');
     const [err, setErr] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const nav = useNavigate();
 
     async function onSubmit(e) {
@@ -28,15 +30,19 @@ export default function Signup() {
             setErr("Please enter a valid email address.");
             return;
         }
-        if (password.length < 8) {
-            setErr("Password must be at least 8 characters long.");
+        const pwProblem = validatePasswordStrength(password);
+        if (pwProblem) {
+            setErr(pwProblem);
             return;
         }
+        setIsLoading(true);
         try {
             await signup(user, mail, password, role, org);
             nav('/login');
         } catch (e) {
-            setErr(e.response?.data?.msg || e.message || "Signup failed");
+            setErr(e.response?.data?.error || e.response?.data?.msg || e.message || "Signup failed");
+        } finally {
+            setIsLoading(false);
         }
     }
     return (
@@ -84,6 +90,7 @@ export default function Signup() {
                         onChange={e => setPassword(e.target.value)}
                         required
                     />
+                    <small className="text-muted">{PASSWORD_HINT}</small>
                 </div>
 
                 <div className="form-group">
@@ -107,7 +114,9 @@ export default function Signup() {
                 </div>
 
                 {err && <div className="error-msg">{err}</div>}
-                <button type="submit" className="btn submit">Create account</button>
+                <button type="submit" className="btn submit" disabled={isLoading}>
+                    {isLoading ? 'Creating account...' : 'Create account'}
+                </button>
                 <h3>Have an account? <Link to="/login">Log in</Link></h3>
             </form>
         </div>

@@ -56,7 +56,16 @@ export const AuthProvider = ({ children }) => {
         return res.data;
     }
 
-    function logout() {
+    async function logout() {
+        // Tell the backend to blocklist both tokens before we drop them locally.
+        // If the network call fails (offline, expired token, server error) we still
+        // clear local state — the user's intent is to log out.
+        try {
+            const refresh = tokenService.getRefresh();
+            await api.post('/auth/logout', refresh ? { refresh_token: refresh } : {});
+        } catch (e) {
+            console.warn("Backend logout failed; clearing local session anyway.", e);
+        }
         tokenService.clearTokens();
         setUser(null);
     }

@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { toast } from "react-toastify";
 import { maintenanceService } from "../utils/maintenanceService";
 
 export default function CreateTicketModal({ onClose, onSuccess, initialData = {} }) {
     const [assignableUsers, setAssignableUsers] = useState([]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [formData, setFormData] = useState({
         asset_id: initialData.asset_id || '',
@@ -26,8 +28,18 @@ export default function CreateTicketModal({ onClose, onSuccess, initialData = {}
         fetchUsers();
     }, []);
 
+    // Close on Escape key
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsSubmitting(true);
         try {
             // Nullify empty strings for DB constraints
             const submissionData = { ...formData };
@@ -38,7 +50,10 @@ export default function CreateTicketModal({ onClose, onSuccess, initialData = {}
             onSuccess();
             onClose();
         } catch (error) {
-            alert("Failed to create a ticket");
+            console.error("Failed to create ticket", error);
+            toast.error("Failed to create ticket.");
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -117,8 +132,10 @@ export default function CreateTicketModal({ onClose, onSuccess, initialData = {}
                         />
                     </div>
                     <div className="modal-actions">
-                        <button type="button" className="btn" onClick={onClose}>Cancel</button>
-                        <button type="submit" className="btn btn-primary">Create Ticket</button>
+                        <button type="button" className="btn" onClick={onClose} disabled={isSubmitting}>Cancel</button>
+                        <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+                            {isSubmitting ? 'Creating...' : 'Create Ticket'}
+                        </button>
                     </div>
                 </form>
             </div>

@@ -1,7 +1,9 @@
 import { Line } from 'react-chartjs-2';
 
 export default function HealthTrend({ history, baseline }) {
-  if (!history || history.length === 0) return <p>Waiting for trend data...</p>;
+  if (!history || history.length === 0) {
+    return <p style={{ color: '#888', textAlign: 'center' }}>Waiting for trend data...</p>;
+  }
 
   const chartData = {
     labels: history.map(h => new Date(h.time).toLocaleTimeString()),

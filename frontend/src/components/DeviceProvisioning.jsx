@@ -28,7 +28,7 @@ export default function DeviceProvisioning() {
             setMessage("Provisioning Token generated successfully. See instructions below.");
         } catch (e) {
             console.log("Provisioning error: ", e);
-            const errMsg = e.response?.data?.msg || "An unexpected error occured";
+            const errMsg = e.response?.data?.error || e.response?.data?.msg || "An unexpected error occured";
             setMessage(`Error: ${errMsg}`);
         } finally {
             setIsLoading(false);

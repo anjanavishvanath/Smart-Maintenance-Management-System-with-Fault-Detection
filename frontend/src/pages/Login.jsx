@@ -9,6 +9,7 @@ export default function Login() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [err, setErr] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const nav = useNavigate();
     const location = useLocation(); //hook to retrieve current location object from react-router
     const from = location.state?.from?.pathname || '/dashboard'; //chaining to determine the path
@@ -23,11 +24,14 @@ export default function Login() {
     async function onSubmit(e) {
         e.preventDefault();
         setErr("");
+        setIsLoading(true);
         try {
             await login(email.trim(), password);
             nav(from, { replace: true }); //navigate to the intended destination after login
         } catch (e) {
-            setErr(e.response?.data?.msg || e.message || "Login failed");
+            setErr(e.response?.data?.error || e.response?.data?.msg || e.message || "Login failed");
+        } finally {
+            setIsLoading(false);
         }
     }
     return (
@@ -57,14 +61,16 @@ export default function Login() {
                     <input
                         id="passInput"
                         type="password"
-                        placeholder="Create a password"
+                        placeholder="Enter Password"
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                         required
                     />
                 </div>
                 {err && <div className="error-msg">{err}</div>}
-                <button type="submit" className="btn submit">Login</button>
+                <button type="submit" className="btn submit" disabled={isLoading}>
+                    {isLoading ? 'Logging in...' : 'Login'}
+                </button>
                 <h3>Don't have an account? <Link to="/signup">Sign up</Link></h3>
             </form>
         </div>

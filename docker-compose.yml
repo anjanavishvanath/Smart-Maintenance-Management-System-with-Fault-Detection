@@ -14,14 +14,22 @@ services:
       - mqtt_network
     volumes:
       - ./backend/app:/usr/src/app/app
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
 
   timescaledb:
     image: timescale/timescaledb:latest-pg14
     container_name: cm_timescaledb
     environment:
-      POSTGRES_USER: cm_user
-      POSTGRES_PASSWORD: cm_pass
-      POSTGRES_DB: cm_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     networks:
@@ -31,14 +39,23 @@ services:
       - ./pgdata:/var/lib/postgresql/data # This is for persistent data storage
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cm_user -d cm_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
-    
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
   mqtt_broker:
     image: eclipse-mosquitto:latest
     container_name: cm_mqtt_broker
+    restart: unless-stopped
     ports:
       - "1883:1883"
       - "9001:9001"
@@ -48,10 +65,19 @@ services:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
 
   mqtt_ingestor:
     build: ./backend
     container_name: cm_mqtt_ingestor
+    restart: unless-stopped
     command: python mqtt_ingestor.py
     depends_on:
       - mqtt_broker
@@ -60,10 +86,18 @@ services:
       - mqtt_network
     environment:
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql://cm_user:cm_pass@timescaledb:5432/cm_db
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
       - MQTT_BROKER=mqtt_broker
     volumes:
       - ./backend/app:/usr/src/app
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
 
 networks:
   mqtt_network:

@@ -11,6 +11,8 @@ import DeviceProvisioning from "./components/DeviceProvisioning";
 import AssetPage from "./pages/AssetsPage";
 import SensorsPage from "./pages/SensorsPage";
 import MaintenancePage from "./pages/MaintenancePage";
+import ReportsPage from "./pages/ReportsPage";
+import SettingsPage from "./pages/SettingsPage";
 
 createRoot(document.getElementById("root")).render(
     <AuthProvider>
@@ -25,6 +27,8 @@ createRoot(document.getElementById("root")).render(
                         <Route path='asset_registry' element={<AssetPage />} />
                         <Route path='sensor_registry' element={<SensorsPage />} />
                         <Route path='maintenance_registry' element={<MaintenancePage />} />
+                        <Route path='reports' element={<ReportsPage />} />
+                        <Route path='settings' element={<SettingsPage />} />
                     </Route>
                 </Route>
             </Routes>

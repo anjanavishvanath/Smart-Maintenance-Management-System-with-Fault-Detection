@@ -29,6 +29,11 @@ export default function Dashboard() {
                     <p>Manage maintenance tickets and alerts.</p>
                     <Link to="/maintenance_registry" className="btn btn-primary" style={{ marginTop: '1rem', display: 'inline-block' }}>View Maintenance</Link>
                 </div>
+                <div className="card">
+                    <h3>MIS Reports</h3>
+                    <p>View asset reliability, alert audit, and deep-dive FFT data.</p>
+                    <Link to="/reports" className="btn btn-primary" style={{ marginTop: '1rem', display: 'inline-block' }}>View Reports</Link>
+                </div>
             </div>
         </div>
     );

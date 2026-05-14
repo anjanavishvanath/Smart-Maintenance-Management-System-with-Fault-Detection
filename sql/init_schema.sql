@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- refresh tokens
+-- refresh tokens (issuance tracking)
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id SERIAL PRIMARY KEY,
     jti TEXT UNIQUE NOT NULL,
@@ -20,6 +20,16 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- JWT blocklist: revoked JTIs for BOTH access and refresh tokens.
+-- The flask-jwt-extended `token_in_blocklist_loader` queries this table.
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+    jti TEXT PRIMARY KEY,
+    expires_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires
+    ON revoked_tokens (expires_at);
 
 -- provisioning tokens
 CREATE TABLE IF NOT EXISTS provisioning_tokens(
@@ -33,6 +43,8 @@ CREATE TABLE IF NOT EXISTS provisioning_tokens(
 );
 
 -- assets
+-- `deleted_at` enables soft-delete: assets disappear from the UI but their
+-- sensor_data, events, and ticket history are preserved for audit/reporting.
 CREATE TABLE IF NOT EXISTS assets (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -40,10 +52,16 @@ CREATE TABLE IF NOT EXISTS assets (
     power FLOAT NOT NULL DEFAULT 0,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     organization TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
 );
+CREATE INDEX IF NOT EXISTS idx_assets_active
+    ON assets (organization)
+    WHERE deleted_at IS NULL;
 
 -- devices
+-- `last_seen` is stamped by the MQTT ingestor whenever a metrics batch lands,
+-- and is used by the UI to show online/offline status without scanning sensor_data.
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
     device_mac TEXT UNIQUE NOT NULL,      -- The permanent physical ID
@@ -52,7 +70,8 @@ CREATE TABLE IF NOT EXISTS devices (
     os_version TEXT,
     mqtt_password TEXT NOT NULL,
     asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen TIMESTAMPTZ
 );
 
 -- sensor_data
@@ -147,3 +166,18 @@ CREATE TABLE IF NOT EXISTS ticket_logs (
 
 CREATE INDEX idx_tickets_asset ON maintenance_tickets(asset_id);
 CREATE INDEX idx_tickets_status ON maintenance_tickets(status);
+
+-- Audit log: who did what to which entity, with optional JSON metadata.
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    organization TEXT,
+    action TEXT NOT NULL,
+    entity TEXT,
+    entity_id TEXT,
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs (action, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs (entity, entity_id, created_at DESC);

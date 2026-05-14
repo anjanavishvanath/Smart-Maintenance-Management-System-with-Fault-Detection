@@ -1,7 +1,9 @@
 import axios from 'axios';
 import tokenService from './utils/tokenHelpers';
 
-export const API_BASE_url = "http://localhost:5000";
+// API base URL is read from VITE_API_URL at build time, falling back to localhost for dev.
+// Set VITE_API_URL in frontend/.env (or .env.production) to point at your deployed backend.
+export const API_BASE_url = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const api = axios.create({
     baseURL: `${API_BASE_url}/api`,
@@ -52,11 +54,16 @@ api.interceptors.response.use(
                 // special unintercepted call to refresh endpoint using raw axios to avoid infinite loop
                 const r = await axios.post("/api/auth/refresh", {}, {
                     headers: { Authorization: `Bearer ${refreshToken}` },
-                    baseURL: "http://localhost:5000"
+                    baseURL: API_BASE_url
                 });
                 const newAccessToken = r.data.access_token;
-                tokenService.setTokens({ access_token: newAccessToken }); //handle success by storing new access token
-                processQueue(null, newAccessToken); //retry all failed requests
+                // Backend now rotates refresh tokens too — store the new one if returned.
+                // tokenService.setTokens only writes keys that are truthy, so missing values are safe.
+                tokenService.setTokens({
+                    access_token: newAccessToken,
+                    refresh_token: r.data.refresh_token,
+                });
+                processQueue(null, newAccessToken); // retry all failed requests
                 originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
                 return api(originalRequest); //retry original request with new token
             } catch (e) {

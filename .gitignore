@@ -1,4 +1,8 @@
+.env
 backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.production
 backend/app/ca-chain.pem
 pgdata/
 backend/app/__pycache__/
@@ -6,3 +10,9 @@ ESP_CODE/old
 vibration_sensor
 node_modules/
 mosquitto/log/mosquitto.log
+CLAUDE.md
+Final_23550767.pdf
+IMPROVEMENTS.md
+project_manifesto.md
+SMMS_Executive_Summary.docx
+SMMS_Viva_Presentation.pptx

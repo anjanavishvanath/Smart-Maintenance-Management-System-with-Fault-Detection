@@ -52,7 +52,7 @@ export default function AssetProvisioning() {
                     />
                 </div>
                 <div className="form-group">
-                    <label htmlFor="powerInput">Power (W)</label>
+                    <label htmlFor="powerInput">Power (kW)</label>
                     <input
                         id="powerInput"
                         type="number"

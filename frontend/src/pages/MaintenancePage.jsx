@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { toast } from "react-toastify";
 import { maintenanceService } from "../utils/maintenanceService";
 import CreateTicketModal from "../components/CreateTicketModal";
 import { useAuth } from "../auth/AuthProvider";
@@ -34,9 +36,10 @@ export default function MaintenancePage() {
                 await maintenanceService.deleteTicket(ticketId);
                 // remove from UI immediately instead of full refresh for better UX
                 setTickets(prev => prev.filter(t => t.id !== ticketId));
+                toast.success("Ticket deleted.");
             } catch (err) {
                 console.error("Failed to delete ticket", err);
-                alert("Failed to delete ticket.");
+                toast.error("Failed to delete ticket.");
             }
         }
     };
@@ -48,22 +51,33 @@ export default function MaintenancePage() {
             setTickets(prev => prev.map(t =>
                 t.id === ticketId ? { ...t, status } : t
             ));
+            toast.success(`Ticket marked as ${status.replace('_', ' ')}.`);
         } catch (err) {
             console.error(`Failed to update ticket status to ${status}`, err);
-            alert(`Failed to update ticket status.`);
+            toast.error("Failed to update ticket status.");
         }
     };
 
     return (
         <div className="container">
-            <div className="header-actions">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h1>Maintenance Registry</h1>
-                <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
-                    + New Manual Ticket
-                </button>
+                <Link to="/dashboard" className="btn">Back to Dashboard</Link>
             </div>
 
+            <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
+                + New Manual Ticket
+            </button>
+
             <div className="grid-view">
+                {tickets.length === 0 && (
+                    <div className="card" style={{ textAlign: 'center', padding: '2rem', gridColumn: '1 / -1' }}>
+                        <p className="text-muted">
+                            No maintenance tickets yet. Click <strong>+ New Manual Ticket</strong> to raise one,
+                            or wait for the system to auto-generate tickets from anomaly events.
+                        </p>
+                    </div>
+                )}
                 {tickets.map(ticket => (
                     <div key={ticket.id} className="card">
                         <div className="card-header">

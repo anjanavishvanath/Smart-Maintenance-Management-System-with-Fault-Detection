@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
 import api from '../api';
 import './AlertsDashboard.css';
 import CreateTicketModal from './CreateTicketModal';
@@ -117,7 +118,7 @@ export default function AlertsDashboard() {
                     onSuccess={() => {
                         setIsModalOpen(false);
                         setSelectedAlert(null);
-                        alert("Ticket created successfully!");
+                        toast.success("Ticket created successfully!");
                     }}
                     initialData={{
                         asset_id: selectedAlert.asset_id,
