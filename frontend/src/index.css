@@ -348,6 +348,65 @@ h2 {
     margin-top: 1.5rem;
 }
 
+/* Selected asset card — highlighted border + faint glow.
+   Keeps the same dimensions as siblings to avoid grid reflow on select. */
+.card-selected {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 1px var(--accent-primary), 0 4px 12px rgba(0, 188, 212, 0.15);
+}
+.card-selected:hover {
+    border-color: var(--accent-primary);
+}
+
+/* Baseline-control block lives INSIDE the asset card when selected.
+   Separated visually from the asset fields above with a dashed divider. */
+.asset-card-baseline {
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+    border-top: 1px dashed var(--border-color);
+}
+
+/* Charts live OUTSIDE the asset grid so they get the full page width
+   and don't disturb the asset grid's auto-fill layout. */
+.charts-section {
+    margin-top: 2rem;
+}
+
+.charts-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.charts-section-header h2 {
+    color: var(--accent-primary);
+    font-family: var(--font-heading);
+    font-size: 1.2rem;
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 1.5rem;
+}
+
+.chart-card {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 1.5rem;
+}
+
+.chart-card h3 {
+    color: var(--accent-primary);
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    font-family: var(--font-heading);
+}
+
 /* Buttons (Generic) */
 button {
     cursor: pointer;

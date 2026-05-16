@@ -1,5 +1,5 @@
 import { useAuth } from "../auth/AuthProvider";
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { toast } from 'react-toastify';
 import AssetProvisioning from "../components/AssetProvisioning";
@@ -201,10 +201,14 @@ export default function AssetPage() {
 
     const stop = (e) => e.stopPropagation();
 
-    const assetList = assets.map((asset) => (
-        <React.Fragment key={asset.id}>
+    const selectedAssetObj = assets.find(a => a.id === selectedAsset) || null;
+
+    const assetList = assets.map((asset) => {
+        const isSelected = selectedAsset === asset.id;
+        return (
             <div
-                className={`card card-hover ${selectedAsset === asset.id ? 'card-selected' : ''}`}
+                key={asset.id}
+                className={`card card-hover ${isSelected ? 'card-selected' : ''}`}
                 onClick={() => setSelectedAsset(prev => prev !== asset.id ? asset.id : null)}
             >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -231,11 +235,9 @@ export default function AssetPage() {
                 </div>
                 <p><span className="text-highlight">Max RPM:</span> {asset.max_rpm}</p>
                 <p><span className="text-highlight">Power:</span> {asset.power} kW</p>
-            </div>
 
-            {selectedAsset === asset.id && (
-                <>
-                    <div className="asset-controls">
+                {isSelected && (
+                    <div className="asset-card-baseline" onClick={stop}>
                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                             <button
                                 className="btn btn-secondary"
@@ -253,25 +255,14 @@ export default function AssetPage() {
                                 {isResettingBaseline ? "Resetting..." : "Reset Baseline"}
                             </button>
                         </div>
-                        <p className="text-muted">* Ensure machine is running in a healthy state before calibrating.</p>
-                        {lastUpdated && (
-                            <p className="text-muted" style={{ fontSize: '0.85rem' }}>
-                                Live data — updated {formatLastUpdated()}
-                            </p>
-                        )}
+                        <p className="text-muted" style={{ fontSize: '0.8rem', margin: '0.5rem 0 0' }}>
+                            * Ensure machine is running in a healthy state before calibrating.
+                        </p>
                     </div>
-                    <div className="chart-card">
-                        <h3>Vibration Trend (Health)</h3>
-                        <HealthTrend history={healthHistory} baseline={baselineData}/>
-                    </div>
-                    <div className="chart-card">
-                        <h3>Diagnostic Spectrum (FFT)</h3>
-                        <VibrationSpectrum data={spectrumData} />
-                    </div>
-                </>
-            )}
-        </React.Fragment>
-    ));
+                )}
+            </div>
+        );
+    });
 
     return (
         <div>
@@ -303,6 +294,31 @@ export default function AssetPage() {
                     </div>
                 ) : assetList}
             </div>
+
+            {selectedAssetObj && (
+                <div className="charts-section">
+                    <div className="charts-section-header">
+                        <h2 style={{ margin: 0 }}>
+                            {selectedAssetObj.name} — Live Diagnostics
+                        </h2>
+                        {lastUpdated && (
+                            <span className="text-muted" style={{ fontSize: '0.85rem' }}>
+                                Live data — updated {formatLastUpdated()}
+                            </span>
+                        )}
+                    </div>
+                    <div className="charts-grid">
+                        <div className="chart-card">
+                            <h3>Vibration Trend (Health)</h3>
+                            <HealthTrend history={healthHistory} baseline={baselineData}/>
+                        </div>
+                        <div className="chart-card">
+                            <h3>Diagnostic Spectrum (FFT)</h3>
+                            <VibrationSpectrum data={spectrumData} />
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {editingAsset && (
                 <div className="modalOverlayStyle">

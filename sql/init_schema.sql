@@ -88,9 +88,15 @@ SELECT create_hypertable('sensor_data', 'time', if_not_exists => TRUE);
 -- Creating an index for fast lookups by device
 CREATE INDEX IF NOT EXISTS idx_device_time ON sensor_data (device_mac, time DESC);
 
+-- asset_health_metrics
+-- One row per processed batch (~1 per second per asset). The Tier 1 columns
+-- (velocity_rms_*, kurtosis_*, crest_factor_total, mahalanobis_distance) feed
+-- the ISO-aligned severity metric and the Mahalanobis-distance scorer; see
+-- backend/app/processing.py and backend/app/mqtt_ingestor.py.
 CREATE TABLE asset_health_metrics (
     time TIMESTAMPTZ NOT NULL,
     asset_id INT NOT NULL,
+    -- Acceleration features (g)
     rms_x FLOAT,
     rms_y FLOAT,
     rms_z FLOAT,
@@ -99,13 +105,31 @@ CREATE TABLE asset_health_metrics (
     dom_freq_y FLOAT,
     dom_freq_z FLOAT,
     peak_to_peak_z FLOAT,
-    condition_score INT, -- 0 for Healthy, 1 for Warning, 2 for Critical
+    -- Tier 1: velocity RMS in mm/s, ISO 10816/20816 band (10 Hz - Nyquist)
+    velocity_rms_x FLOAT,
+    velocity_rms_y FLOAT,
+    velocity_rms_z FLOAT,
+    velocity_rms_total FLOAT,
+    -- Tier 1: impulsiveness features (dimensionless)
+    kurtosis_x FLOAT,            -- excess kurtosis; Gaussian = 0
+    kurtosis_y FLOAT,
+    kurtosis_z FLOAT,
+    crest_factor_total FLOAT,    -- peak / RMS; pure sine ~= 1.41
+    -- Tier 1: multivariate anomaly score (D^2, ~chi-square with k DoF)
+    mahalanobis_distance FLOAT,
+    -- Severity + diagnosis
+    condition_score INT,          -- 0 Healthy, 1 Warning, 2 Critical
     diagnosis TEXT DEFAULT 'Healthy'
 );
 -- Convert to hypertable for TimescaleDB performance
 SELECT create_hypertable('asset_health_metrics', 'time');
 CREATE INDEX IF NOT EXISTS idx_asset_health_time ON asset_health_metrics (asset_id, time DESC);
 
+-- asset_baselines
+-- The legacy per-axis means/stds are still populated for the old z-score
+-- fallback path and for dashboard widgets that consume them directly. The
+-- mahalanobis_baseline JSONB holds the new feature-vector mean + inverse
+-- covariance matrix used by the Tier 1 scorer (see db.calculate_and_set_baseline).
 CREATE TABLE asset_baselines (
     asset_id INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
     mean_rms_x FLOAT DEFAULT 0.0,
@@ -122,7 +146,9 @@ CREATE TABLE asset_baselines (
     std_dom_freq_y FLOAT DEFAULT 0.0,
     mean_dom_freq_z FLOAT DEFAULT 0.0,
     std_dom_freq_z FLOAT DEFAULT 0.0,
-    calibrated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP    
+    calibrated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    -- Tier 1: { feature_names: [...], mean: [...], cov_inv: [[...]], n_samples: int }
+    mahalanobis_baseline JSONB
 );
 
 CREATE TABLE asset_events (

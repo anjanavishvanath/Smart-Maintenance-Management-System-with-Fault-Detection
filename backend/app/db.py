@@ -318,12 +318,39 @@ def insert_sensor_data_bulk(data_list):
         conn.close()
 
 
-def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_total, rms_z, peak_to_peak_z, dominant_freq_x, dominant_freq_y, dominant_freq_z, condition_score=0, diagnosis="Healthy"):
+def insert_sensor_metrics(
+    time, asset_id,
+    rms_x, rms_y, rms_z, rms_total,
+    peak_to_peak_z,
+    dominant_freq_x, dominant_freq_y, dominant_freq_z,
+    condition_score=0, diagnosis="Healthy",
+    *,
+    velocity_rms_x=None, velocity_rms_y=None, velocity_rms_z=None, velocity_rms_total=None,
+    kurtosis_x=None, kurtosis_y=None, kurtosis_z=None,
+    crest_factor_total=None,
+    mahalanobis_distance=None,
+):
+    """Persist one batch of features to the asset_health_metrics hypertable.
+
+    Tier 1 columns (velocity_rms_*, kurtosis_*, crest_factor_total,
+    mahalanobis_distance) are keyword-only and nullable so any future call site
+    can omit them safely.
+    """
     with engine.begin() as conn:
         conn.execute(text(
-            """INSERT INTO asset_health_metrics 
-               (time, asset_id, rms_x, rms_y, rms_total, rms_z, dom_freq_x, dom_freq_y, dom_freq_z, peak_to_peak_z, condition_score, diagnosis) 
-               VALUES (:time, :asset_id, :rms_x, :rms_y, :rms_total, :rms_z, :dominant_freq_x, :dominant_freq_y, :dominant_freq_z, :peak_to_peak_z, :condition_score, :diagnosis)"""
+            """INSERT INTO asset_health_metrics
+               (time, asset_id, rms_x, rms_y, rms_total, rms_z,
+                dom_freq_x, dom_freq_y, dom_freq_z, peak_to_peak_z,
+                condition_score, diagnosis,
+                velocity_rms_x, velocity_rms_y, velocity_rms_z, velocity_rms_total,
+                kurtosis_x, kurtosis_y, kurtosis_z,
+                crest_factor_total, mahalanobis_distance)
+               VALUES (:time, :asset_id, :rms_x, :rms_y, :rms_total, :rms_z,
+                       :dominant_freq_x, :dominant_freq_y, :dominant_freq_z, :peak_to_peak_z,
+                       :condition_score, :diagnosis,
+                       :velocity_rms_x, :velocity_rms_y, :velocity_rms_z, :velocity_rms_total,
+                       :kurtosis_x, :kurtosis_y, :kurtosis_z,
+                       :crest_factor_total, :mahalanobis_distance)"""
         ), {
             "time": time,
             "asset_id": asset_id,
@@ -336,7 +363,16 @@ def insert_sensor_metrics(time, asset_id, rms_x, rms_y, rms_total, rms_z, peak_t
             "dominant_freq_z": dominant_freq_z,
             "peak_to_peak_z": peak_to_peak_z,
             "condition_score": condition_score,
-            "diagnosis": diagnosis
+            "diagnosis": diagnosis,
+            "velocity_rms_x": velocity_rms_x,
+            "velocity_rms_y": velocity_rms_y,
+            "velocity_rms_z": velocity_rms_z,
+            "velocity_rms_total": velocity_rms_total,
+            "kurtosis_x": kurtosis_x,
+            "kurtosis_y": kurtosis_y,
+            "kurtosis_z": kurtosis_z,
+            "crest_factor_total": crest_factor_total,
+            "mahalanobis_distance": mahalanobis_distance,
         })
 
 def get_asset_spectrum(asset_id: int, limit: int = 500, *, until=None):
@@ -428,50 +464,125 @@ def get_asset_health(asset_id: int, limit: int = 50, *, from_ts=None, to_ts=None
 
 
 
+# Order of features in the Mahalanobis vector. Must match the order produced
+# by the ingestor's _build_feature_vector(). Names are persisted in JSON so the
+# ingestor can detect a stale baseline if the feature set changes in future.
+MAHAL_FEATURE_NAMES = [
+    "velocity_rms_total",   # one-sided severity (mm/s, ISO band)
+    "crest_factor_total",   # impulsiveness
+    "kurtosis_max",         # max(kurtosis_x, kurtosis_y, kurtosis_z)
+    "dom_freq_y",           # radial-axis frequency (drift detection)
+]
+
+
 def calculate_and_set_baseline(asset_id: int):
-    # Fetch total along with individual axes
+    """Recompute and persist the per-asset baseline.
+
+    Writes BOTH the legacy per-axis means/stds (for the old z-score path and
+    for the dashboards that read those columns) AND the new Mahalanobis
+    baseline (mean vector + inverse covariance over MAHAL_FEATURE_NAMES).
+    Either path can be used by the ingestor depending on which is populated.
+    """
     query = text("""
-        SELECT rms_x, rms_y, rms_z, rms_total, dom_freq_x, dom_freq_y, dom_freq_z
-        FROM asset_health_metrics 
+        SELECT rms_x, rms_y, rms_z, rms_total,
+               dom_freq_x, dom_freq_y, dom_freq_z,
+               velocity_rms_total, crest_factor_total,
+               kurtosis_x, kurtosis_y, kurtosis_z
+        FROM asset_health_metrics
         WHERE asset_id = :asset_id AND condition_score = 0
         ORDER BY time DESC LIMIT 100
     """)
-    
+
     with engine.connect() as conn:
         result = conn.execute(query, {"asset_id": asset_id}).fetchall()
-        
+
         if len(result) < 10:
             return {"error": "Need at least 10 healthy samples."}
 
-        data = np.array(result)
-        means = np.mean(data, axis=0)
-        stds = np.std(data, axis=0)
+        data = np.array(result, dtype=float)
+        # Replace any NULLs (rows from before the migration) with NaN so we can
+        # detect and handle them cleanly below.
+        means = np.nanmean(data, axis=0)
+        stds = np.nanstd(data, axis=0)
 
-        # Sanity-check: if any std is below the noise floor, warn loudly.
-        # A near-zero std means the calibration window was too narrow / too quiet,
-        # and z-scores against this baseline will be unreliable.
         WEAK_STD_THRESHOLD = 0.005
-        weak_axes = [i for i, s in enumerate(stds) if s < WEAK_STD_THRESHOLD]
+        legacy_axis_names = ["rms_x", "rms_y", "rms_z", "rms_total",
+                             "dom_freq_x", "dom_freq_y", "dom_freq_z"]
+        weak_axes = [i for i, s in enumerate(stds[:7]) if s < WEAK_STD_THRESHOLD]
         if weak_axes:
-            axis_names = ["rms_x", "rms_y", "rms_z", "rms_total",
-                          "dom_freq_x", "dom_freq_y", "dom_freq_z"]
-            weak = ", ".join(axis_names[i] for i in weak_axes if i < len(axis_names))
+            weak = ", ".join(legacy_axis_names[i] for i in weak_axes)
             logger.warning(
                 "Baseline for asset %s has near-zero std on [%s]. "
-                "Consider recalibrating across a longer healthy window for reliable z-scores.",
+                "Consider recalibrating across a longer healthy window for reliable scores.",
                 asset_id, weak,
             )
 
+        # --- Build the Mahalanobis baseline (Tier 1) ---
+        # Columns 7..11 are velocity_rms_total, crest_factor_total, kurtosis_x/y/z.
+        # Need at least one non-null row across all of these; otherwise we skip.
+        velocity_rms_total = data[:, 7]
+        crest_factor_total = data[:, 8]
+        kurtosis_xyz = data[:, 9:12]
+
+        mahal_baseline_json = None
+        valid_mask = (
+            ~np.isnan(velocity_rms_total)
+            & ~np.isnan(crest_factor_total)
+            & ~np.isnan(kurtosis_xyz).any(axis=1)
+        )
+        if valid_mask.sum() >= 10:
+            kurtosis_max = np.max(kurtosis_xyz[valid_mask], axis=1)
+            features = np.column_stack([
+                velocity_rms_total[valid_mask],
+                crest_factor_total[valid_mask],
+                kurtosis_max,
+                data[valid_mask, 5],   # dom_freq_y
+            ])
+            feature_means = features.mean(axis=0)
+            # rowvar=False -> each column is a variable. Add a tiny diagonal
+            # ridge before inversion so a feature with zero variance (sensor
+            # stuck on a value during calibration) doesn't blow up the inverse.
+            cov = np.cov(features, rowvar=False)
+            ridge = 1e-6 * np.eye(cov.shape[0])
+            try:
+                cov_inv = np.linalg.inv(cov + ridge)
+            except np.linalg.LinAlgError:
+                cov_inv = np.linalg.pinv(cov + ridge)
+            mahal_baseline_json = json.dumps({
+                "feature_names": MAHAL_FEATURE_NAMES,
+                "mean": feature_means.tolist(),
+                "cov_inv": cov_inv.tolist(),
+                "n_samples": int(valid_mask.sum()),
+            })
+            logger.info(
+                "Mahalanobis baseline built for asset %s from %d samples.",
+                asset_id, int(valid_mask.sum()),
+            )
+        else:
+            logger.info(
+                "Skipping Mahalanobis baseline for asset %s — only %d rows have "
+                "the new feature columns populated. Re-run after more telemetry arrives.",
+                asset_id, int(valid_mask.sum()),
+            )
+
         upsert_query = text("""
-            INSERT INTO asset_baselines 
-                (asset_id, mean_rms_x, std_rms_x, mean_rms_y, std_rms_y, 
+            INSERT INTO asset_baselines
+                (asset_id, mean_rms_x, std_rms_x, mean_rms_y, std_rms_y,
                  mean_rms_z, std_rms_z, mean_rms_total, std_rms_total,
                  mean_dom_freq_x, std_dom_freq_x, mean_dom_freq_y, std_dom_freq_y,
-                 mean_dom_freq_z, std_dom_freq_z, calibrated_at)
-            VALUES 
-                (:id, :mx, :sx, :my, :sy, :mz, :sz, :mt, :st, 
-                 :mdfx, :sdfx, :mdfy, :sdfy, :mdfz, :sdfz, CURRENT_TIMESTAMP)
+                 mean_dom_freq_z, std_dom_freq_z, calibrated_at,
+                 mahalanobis_baseline)
+            VALUES
+                (:id, :mx, :sx, :my, :sy, :mz, :sz, :mt, :st,
+                 :mdfx, :sdfx, :mdfy, :sdfy, :mdfz, :sdfz, CURRENT_TIMESTAMP,
+                 CAST(:mahal AS JSONB))
             ON CONFLICT (asset_id) DO UPDATE SET
+                mean_rms_x = EXCLUDED.mean_rms_x,
+                std_rms_x = EXCLUDED.std_rms_x,
+                mean_rms_y = EXCLUDED.mean_rms_y,
+                std_rms_y = EXCLUDED.std_rms_y,
+                mean_rms_z = EXCLUDED.mean_rms_z,
+                std_rms_z = EXCLUDED.std_rms_z,
                 mean_rms_total = EXCLUDED.mean_rms_total,
                 std_rms_total = EXCLUDED.std_rms_total,
                 mean_dom_freq_x = EXCLUDED.mean_dom_freq_x,
@@ -480,12 +591,10 @@ def calculate_and_set_baseline(asset_id: int):
                 std_dom_freq_y = EXCLUDED.std_dom_freq_y,
                 mean_dom_freq_z = EXCLUDED.mean_dom_freq_z,
                 std_dom_freq_z = EXCLUDED.std_dom_freq_z,
-                calibrated_at = EXCLUDED.calibrated_at
+                calibrated_at = EXCLUDED.calibrated_at,
+                mahalanobis_baseline = EXCLUDED.mahalanobis_baseline
         """)
-        
-        # means/stds indices:
-        # 0: rms_x, 1: rms_y, 2: rms_z, 3: rms_total, 4: dom_freq_x, 5: dom_freq_y, 6: dom_freq_z
-        
+
         conn.execute(upsert_query, {
             "id": asset_id,
             "mx": float(means[0]), "sx": float(stds[0]),
@@ -494,10 +603,11 @@ def calculate_and_set_baseline(asset_id: int):
             "mt": float(means[3]), "st": float(stds[3]),
             "mdfx": float(means[4]), "sdfx": float(stds[4]),
             "mdfy": float(means[5]), "sdfy": float(stds[5]),
-            "mdfz": float(means[6]), "sdfz": float(stds[6])
+            "mdfz": float(means[6]), "sdfz": float(stds[6]),
+            "mahal": mahal_baseline_json,
         })
         conn.commit()
-    
+
     return {"message": "Baseline calculated and set successfully."}
 
 def get_asset_baseline(asset_id: int):

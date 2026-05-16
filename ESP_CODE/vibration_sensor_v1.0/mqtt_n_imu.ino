@@ -39,13 +39,18 @@ static void mqttReconnect() {
 }
 
 // ---- Sampling task (Core 1) ---------------------------------------------
+// Idle-suppression note: we measure vibration as the AC-coupled peak deviation
+// from the *window's own mean* — NOT as |a| - 1g. The latter is contaminated
+// by the IMU's per-chip calibration offset (typically 3-7%), so a perfectly
+// stationary sensor reads ~0.07 g and never gates idle data correctly.
+// Subtracting the window mean cancels gravity, calibration bias, and any
+// mounting tilt in one shot, giving a sensor-agnostic threshold.
 static void samplingTask(void* pv) {
   const TickType_t periodTicks = pdMS_TO_TICKS(5);  // 200 Hz
   TickType_t lastWake = xTaskGetTickCount();
 
   SamplePacket window[BATCH_SIZE];
   int count = 0;
-  float maxMagInWindow = 0.0f;
   uint32_t windowTs = 0;
 
   Serial.println("[sampling] started on core 1");
@@ -55,21 +60,39 @@ static void samplingTask(void* pv) {
       float ay = imu.accel_y_mps2() / G_TO_MPS2;
       float az = imu.accel_z_mps2() / G_TO_MPS2;
 
-      float mag = fabs(sqrt(ax*ax + ay*ay + az*az) - 1.0f);
-      if (mag > maxMagInWindow) maxMagInWindow = mag;
-
       if (count == 0) windowTs = micros();
       window[count] = { windowTs, ax, ay, az };
       count++;
 
       if (count >= BATCH_SIZE) {
-        if (maxMagInWindow > VIBRATION_THRESHOLD) {
+        // Window mean (the DC / gravity component, including any sensor bias).
+        float mx = 0.0f, my = 0.0f, mz = 0.0f;
+        for (int i = 0; i < BATCH_SIZE; i++) {
+          mx += window[i].ax;
+          my += window[i].ay;
+          mz += window[i].az;
+        }
+        mx /= BATCH_SIZE;
+        my /= BATCH_SIZE;
+        mz /= BATCH_SIZE;
+
+        // Peak AC residual across the window. This is the actual vibration
+        // magnitude — robust to any constant offset on any axis.
+        float maxResidual = 0.0f;
+        for (int i = 0; i < BATCH_SIZE; i++) {
+          float dx = window[i].ax - mx;
+          float dy = window[i].ay - my;
+          float dz = window[i].az - mz;
+          float r  = sqrtf(dx*dx + dy*dy + dz*dz);
+          if (r > maxResidual) maxResidual = r;
+        }
+
+        if (maxResidual > VIBRATION_THRESHOLD) {
           for (int i = 0; i < BATCH_SIZE; i++) {
             xQueueSend(sampleQueue, &window[i], 0);
           }
         }
         count = 0;
-        maxMagInWindow = 0.0f;
       }
     }
     vTaskDelayUntil(&lastWake, periodTicks);

@@ -18,7 +18,8 @@ from db import (
     update_device_last_seen,
 )
 from db import get_active_event, create_event, close_event
-from processing import calculate_vibration_metrics
+from processing import calculate_vibration_metrics, band_energy
+import numpy as np
 
 # --- CONFIG ---
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mqtt_broker")
@@ -28,16 +29,40 @@ MQTT_TOPIC_SUB = "presense/#"
 SAMPLING_RATE = 200          # 200 Hz (must match ESP32 firmware)
 DT_MS = 1000 / SAMPLING_RATE  # 5 ms per sample
 
-# --- Anomaly detection thresholds ---
-# z-scores are unitless multiples of the asset's healthy standard deviation.
-# Values are deliberately conservative; tune per deployment if you see noise-driven false positives.
-Z_CRITICAL = 5.0   # > 5 sigma from baseline => Critical (severity 2)
-Z_WARNING = 3.0    # > 3 sigma but <= 5 => Warning (severity 1)
-SIGMA_FLOOR = 0.005  # Lower bound for std-dev when scoring, prevents div-by-zero on weak baselines
+# --- Sensor mounting orientation ---
+# These name the axis that points along (axial) and perpendicular to (radial)
+# the motor shaft, given the current physical mount. Change here if you remount.
+# Standard textbook fault signatures: unbalance + parallel misalignment show
+# strongest on the RADIAL axis; angular misalignment + thrust on the AXIAL.
+AXIAL_AXIS = "x"
+RADIAL_AXIS = "y"
+# 'z' on the current sensor is at ~45 deg to the shaft, so it mixes axial + radial.
+# Kept for total-RMS aggregation but excluded from primary diagnosis.
 
-# Fallback thresholds (used only when an asset has no baseline yet — magnitude-only triage).
-FALLBACK_RMS_CRITICAL = 0.6
-FALLBACK_RMS_WARNING = 0.02
+# --- Anomaly detection thresholds ---
+# Mahalanobis D^2 is approximately chi-square distributed with k DoF (k = number
+# of features in the baseline). For our 4-feature vector:
+#   chi^2(0.95, 4) =  9.488  -> Warning
+#   chi^2(0.99, 4) = 13.277  -> Critical
+# Tighten/loosen if you see noise-driven false positives.
+MAHAL_WARNING = 9.488
+MAHAL_CRITICAL = 13.277
+
+# Legacy z-score thresholds (kept for the fallback path used while an asset has
+# not yet been re-baselined under the Tier 1 feature set).
+Z_CRITICAL = 5.0
+Z_WARNING = 3.0
+SIGMA_FLOOR = 0.005
+
+# Pre-baseline triage (no baseline of any kind exists yet). Velocity in mm/s
+# against ISO 20816 Class II (small machines, < 15 kW).
+FALLBACK_VELOCITY_CRITICAL_MMPS = 11.2
+FALLBACK_VELOCITY_WARNING_MMPS  = 4.5
+
+# Diagnosis: half-width windows for band-energy probes around the fundamental.
+# +/- 10% covers slip and minor speed variation without bleeding into the next
+# harmonic for typical RPMs (1500-3600).
+BAND_HALFWIDTH_FRAC = 0.10
 
 # --- Cache / buffer bounds ---
 # Tumbling windows clear at SAMPLING_RATE. Cap at 5x as a safety net so a stuck
@@ -113,31 +138,73 @@ def on_disconnect(client, userdata, rc):
         logger.warning("MQTT disconnected unexpectedly (rc=%s). loop_forever will retry with backoff.", rc)
 
 
-def diagnose_fault(asset_rpm, mx, my, mz, score, baseline):
+def _axis(metrics_by_axis: dict, name: str) -> dict:
+    """Lookup a per-axis metrics dict by axis name ('x', 'y', 'z')."""
+    return metrics_by_axis[name]
+
+
+def diagnose_fault(asset_rpm, metrics_by_axis, score, baseline):
+    """Classify the fault type from spectral content in a triggered batch.
+
+    Decision is driven by *band-energy ratios* on the diagnostic axes, not
+    argmax-of-FFT — the latter flips on noise and is order-dependent.
+
+    Logic:
+      * Unbalance:    RADIAL axis, strong 1x energy relative to broadband.
+      * Misalignment: 2x energy comparable to or exceeding 1x energy on the
+                      RADIAL axis (parallel misalignment) or AXIAL axis
+                      (angular misalignment).
+      * Bearing wear: high-frequency band energy (>= 4x fundamental, up to
+                      Nyquist) elevated relative to the rest of the spectrum.
+    """
     if score == 0:
         return "Healthy"
 
-    # Ensure baseline is a dict even if None was passed
     b = baseline if baseline else {}
-
-    # Fallback to RPM-based frequency if baseline freq is missing or 0
-    base_freq = b.get('mean_dom_freq_x') or (asset_rpm / 60.0)
-    if base_freq == 0:
+    base_freq = b.get('mean_dom_freq_x') or (asset_rpm / 60.0) if asset_rpm else 0.0
+    if not base_freq or base_freq <= 0:
         base_freq = 25.0  # Final fallback for 1500 RPM
 
-    current_freq = mx['dominant_freq']
+    radial = _axis(metrics_by_axis, RADIAL_AXIS)
+    axial  = _axis(metrics_by_axis, AXIAL_AXIS)
 
-    # 1X Peak (Unbalance)
-    if abs(current_freq - base_freq) < 2.0:
-        return "Unbalance Detected (Strong 1X Peak)"
+    # All axes share the same FFT bins (same window length, same sampling rate),
+    # so we can pull frequencies once and reuse.
+    freqs = np.asarray(radial["frequencies"])
+    nyquist = float(freqs[-1])
 
-    # 2X Harmonic (Misalignment)
-    if abs(current_freq - (2 * base_freq)) < 2.0:
-        return "Misalignment (2X Harmonic)"
+    half = base_freq * BAND_HALFWIDTH_FRAC
 
-    # High frequency (Bearing Wear) — usually shows on the Z-axis at high multiples
-    if mz['dominant_freq'] > (base_freq * 4):
-        return "High Frequency Anomaly (Potential Bearing Wear)"
+    def _energies(metrics):
+        amps = np.asarray(metrics["amplitudes"])
+        e_1x = band_energy(amps, freqs, base_freq - half, base_freq + half)
+        e_2x = band_energy(amps, freqs, 2 * base_freq - half, 2 * base_freq + half)
+        e_high = band_energy(amps, freqs, max(4 * base_freq, 0.0), nyquist)
+        e_total = band_energy(amps, freqs, 0.0, nyquist) or 1e-12
+        return e_1x, e_2x, e_high, e_total
+
+    er_1x, er_2x, er_high, er_total = _energies(radial)
+    ea_1x, ea_2x, ea_high, ea_total = _energies(axial)
+
+    # --- Bearing wear: dominant high-frequency content on either axis ---
+    # If >40% of broadband energy sits above 4x the fundamental, that's a
+    # textbook bearing/gear-mesh signature.
+    if (er_high / er_total) > 0.40 or (ea_high / ea_total) > 0.40:
+        return "High-Frequency Anomaly (Potential Bearing Wear)"
+
+    # --- Misalignment: 2x energy comparable to or exceeding 1x ---
+    # Threshold of 0.5 is the textbook rule-of-thumb (Goldman et al.); higher
+    # ratios than ~0.7 strongly suggest misalignment over unbalance.
+    radial_2x_ratio = er_2x / (er_1x + 1e-12)
+    axial_2x_ratio  = ea_2x / (ea_1x + 1e-12)
+    if radial_2x_ratio > 0.5:
+        return "Misalignment Suspected (Strong 2X on Radial Axis)"
+    if axial_2x_ratio > 0.5:
+        return "Angular Misalignment Suspected (Strong 2X on Axial Axis)"
+
+    # --- Unbalance: 1x dominates the radial spectrum ---
+    if (er_1x / er_total) > 0.30:
+        return "Unbalance Detected (Strong 1X Peak on Radial Axis)"
 
     return "Generic Vibration Increase"
 
@@ -283,9 +350,17 @@ def _process_telemetry(asset_id: int, device_mac: str, payload: dict) -> None:
         logger.error("Error calculating metrics for device %s", device_mac)
         return  # Buffer was already cleared above.
 
+    metrics_by_axis = {"x": mx, "y": my, "z": mz}
     total_rms = math.sqrt(mx['rms']**2 + my['rms']**2 + mz['rms']**2)
+    velocity_rms_total = math.sqrt(
+        mx['velocity_rms']**2 + my['velocity_rms']**2 + mz['velocity_rms']**2
+    )
+    crest_factor_total = max(mx['crest_factor'], my['crest_factor'], mz['crest_factor'])
 
-    score, max_z = _score_anomaly(total_rms, mx, baseline)
+    # New scorer: Mahalanobis when available, falls back to legacy z-score
+    # then magnitude triage. anomaly_metric is D^2 for Mahalanobis, max-z for
+    # legacy, or 0 for triage. Stored on the metrics row regardless.
+    score, anomaly_metric = _score_anomaly(metrics_by_axis, baseline)
 
     # Update score history (LRU-bounded by MAX_TRACKED_ASSETS).
     history = score_history.get(asset_id)
@@ -299,17 +374,17 @@ def _process_telemetry(asset_id: int, device_mac: str, payload: dict) -> None:
         history.pop(0)
 
     reported_score = Counter(history).most_common(1)[0][0]
-    diagnosis = diagnose_fault(asset_rpm, mx, my, mz, reported_score, baseline)
+    diagnosis = diagnose_fault(asset_rpm, metrics_by_axis, reported_score, baseline)
 
     # --- Asset event lifecycle ---
     active_event = get_active_event(asset_id)
     if reported_score > 0:
         if not active_event:
             logger.info("Opening new alert for Asset %s (Severity: %s)", asset_id, reported_score)
-            create_event(asset_id, reported_score, diagnosis, max_z)
+            create_event(asset_id, reported_score, diagnosis, anomaly_metric)
         elif active_event.severity != reported_score:
             close_event(active_event.id)
-            create_event(asset_id, reported_score, diagnosis, max_z)
+            create_event(asset_id, reported_score, diagnosis, anomaly_metric)
     else:
         if active_event:
             logger.info("Resolving alert for Asset %s. Machine is healthy.", asset_id)
@@ -328,6 +403,15 @@ def _process_telemetry(asset_id: int, device_mac: str, payload: dict) -> None:
         dominant_freq_z=mz['dominant_freq'],
         condition_score=reported_score,
         diagnosis=diagnosis,
+        velocity_rms_x=mx['velocity_rms'],
+        velocity_rms_y=my['velocity_rms'],
+        velocity_rms_z=mz['velocity_rms'],
+        velocity_rms_total=round(velocity_rms_total, 4),
+        kurtosis_x=mx['kurtosis'],
+        kurtosis_y=my['kurtosis'],
+        kurtosis_z=mz['kurtosis'],
+        crest_factor_total=round(crest_factor_total, 4),
+        mahalanobis_distance=round(anomaly_metric, 4),
     )
 
     # Heartbeat: stamp last_seen once per processed batch (not per sample) so the
@@ -340,20 +424,102 @@ def _process_telemetry(asset_id: int, device_mac: str, payload: dict) -> None:
     logger.info("Inserted metrics for asset %s (Score: %s, Freq Res: ~1Hz)", asset_id, reported_score)
 
 
-def _score_anomaly(total_rms, mx, baseline):
-    """Compute (severity_score, max_z) from this batch.
+def _build_feature_vector(metrics_by_axis: dict) -> np.ndarray:
+    """Pack per-batch metrics into the Mahalanobis feature vector.
 
-    With a baseline, we score by combined RMS + frequency z-score.
-    Without one, we fall back to fixed magnitude thresholds (only used pre-calibration).
+    Order MUST match db.MAHAL_FEATURE_NAMES:
+      [velocity_rms_total, crest_factor_total, kurtosis_max, dom_freq_y]
     """
+    mx = metrics_by_axis["x"]
+    my = metrics_by_axis["y"]
+    mz = metrics_by_axis["z"]
+    velocity_rms_total = math.sqrt(
+        mx["velocity_rms"] ** 2 + my["velocity_rms"] ** 2 + mz["velocity_rms"] ** 2
+    )
+    # Crest factor on the resultant magnitude isn't well-defined from per-axis
+    # crests; pick the maximum across axes as a conservative impulsiveness summary.
+    crest_factor_total = max(mx["crest_factor"], my["crest_factor"], mz["crest_factor"])
+    kurtosis_max = max(mx["kurtosis"], my["kurtosis"], mz["kurtosis"])
+    dom_freq_radial = metrics_by_axis[RADIAL_AXIS]["dominant_freq"]
+    return np.array(
+        [velocity_rms_total, crest_factor_total, kurtosis_max, dom_freq_radial],
+        dtype=float,
+    )
+
+
+def _score_anomaly(metrics_by_axis: dict, baseline):
+    """Return (severity_score, anomaly_metric) for this batch.
+
+    Three scoring paths, in priority order:
+      1) MAHALANOBIS (preferred)  — full multivariate distance against a
+         baseline that includes mean vector + inverse covariance.
+      2) LEGACY Z-SCORE (fallback) — when an asset has the old per-axis
+         baseline but no Mahalanobis JSON. ONE-SIDED on RMS now (a quieter
+         motor isn't a fault).
+      3) MAGNITUDE TRIAGE (last resort) — pre-calibration; uses ISO 20816
+         Class II velocity thresholds on broadband velocity RMS.
+
+    The second return value is the anomaly metric used (D^2 for path 1, max
+    z-score for path 2, 0 for path 3) — persisted as `mahalanobis_distance`
+    for path 1 and `max_z_score` on the event row.
+    """
+    feature_vec = _build_feature_vector(metrics_by_axis)
+    velocity_rms_total = float(feature_vec[0])
+
+    # --- Path 1: Mahalanobis ---
+    mahal_baseline = baseline.get("mahalanobis_baseline") if baseline else None
+    if mahal_baseline:
+        # JSONB columns come back as dicts already; tolerate raw strings too.
+        if isinstance(mahal_baseline, str):
+            try:
+                mahal_baseline = json.loads(mahal_baseline)
+            except json.JSONDecodeError:
+                mahal_baseline = None
+
+    if mahal_baseline:
+        mean = np.asarray(mahal_baseline["mean"], dtype=float)
+        cov_inv = np.asarray(mahal_baseline["cov_inv"], dtype=float)
+        if mean.shape[0] == feature_vec.shape[0] and cov_inv.shape == (mean.shape[0], mean.shape[0]):
+            diff = feature_vec - mean
+            d2 = float(diff @ cov_inv @ diff)
+
+            # ONE-SIDED guard on velocity RMS: never flag if the machine is
+            # running quieter than baseline. Distance can still be large for
+            # frequency / kurtosis drift, but those are real signals worth alerting on.
+            quieter = velocity_rms_total < mean[0]
+            if quieter and d2 < MAHAL_CRITICAL:
+                # Quieter than baseline AND not extreme => suppress.
+                return 0, d2
+
+            if d2 > MAHAL_CRITICAL:
+                return 2, d2
+            if d2 > MAHAL_WARNING:
+                return 1, d2
+            return 0, d2
+        else:
+            logger.warning(
+                "Mahalanobis baseline shape mismatch (mean=%s, cov_inv=%s, vec=%s) — "
+                "feature schema may have changed; falling back to legacy z-score.",
+                mean.shape, cov_inv.shape, feature_vec.shape,
+            )
+
+    # --- Path 2: Legacy z-score (with one-sided RMS) ---
     if baseline and baseline.get('std_rms_total') and baseline['std_rms_total'] > 0:
+        # Use velocity RMS in mm/s if available on the baseline; otherwise the
+        # legacy mean_rms_total stored as acceleration RMS in g.
+        total_rms_g = math.sqrt(
+            metrics_by_axis["x"]["rms"] ** 2
+            + metrics_by_axis["y"]["rms"] ** 2
+            + metrics_by_axis["z"]["rms"] ** 2
+        )
         mu_rms = baseline['mean_rms_total']
         sigma_rms = max(baseline['std_rms_total'], SIGMA_FLOOR)
-        z_rms = (total_rms - mu_rms) / sigma_rms
+        # ONE-SIDED: clamp negative deviations to zero. A drop in RMS isn't a fault.
+        z_rms = max((total_rms_g - mu_rms) / sigma_rms, 0.0)
 
         mu_freq = baseline.get('mean_dom_freq_x', 0)
         sigma_freq = max(baseline.get('std_dom_freq_x', 0), SIGMA_FLOOR)
-        z_freq = abs(mx['dominant_freq'] - mu_freq) / sigma_freq
+        z_freq = abs(metrics_by_axis["x"]['dominant_freq'] - mu_freq) / sigma_freq
 
         max_z = max(z_rms, z_freq)
         if max_z > Z_CRITICAL:
@@ -362,10 +528,10 @@ def _score_anomaly(total_rms, mx, baseline):
             return 1, max_z
         return 0, max_z
 
-    # Fallback path — pre-calibration triage.
-    if total_rms > FALLBACK_RMS_CRITICAL:
+    # --- Path 3: Magnitude triage on velocity RMS, ISO 20816 Class II ---
+    if velocity_rms_total > FALLBACK_VELOCITY_CRITICAL_MMPS:
         return 2, 0.0
-    if total_rms > FALLBACK_RMS_WARNING:
+    if velocity_rms_total > FALLBACK_VELOCITY_WARNING_MMPS:
         return 1, 0.0
     return 0, 0.0
 
